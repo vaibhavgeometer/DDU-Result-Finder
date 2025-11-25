@@ -23,11 +23,17 @@ Contributions are welcome! Please follow these steps:
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ---
 ## Issues
+
 If you find any bugs or have feature requests, please open an issue [here](https://github.com/vaibhavgeometer/ddu-result-code/issues).
+
 ---
 ## License
+
 This project is licensed under the terms of the [MIT License](LICENSE).
+
 ---
 ## Author
+
 Maintained by [@vaibhavgeometer](https://github.com/vaibhavgeometer).
+
 --- 

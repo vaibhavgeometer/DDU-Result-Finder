@@ -5,7 +5,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/vaibhavgeometer/ddu-result-code)](https://github.com/vaibhavgeometer/ddu-result-code/stargazers)
 ---
 ## Overview
+
 **ddu-result-code** is a library/repository maintained by [@vaibhavgeometer](https://github.com/vaibhavgeometer)
+
 ---
 ## Installation
 Clone the repository:

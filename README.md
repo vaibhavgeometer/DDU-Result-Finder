@@ -36,12 +36,6 @@ git clone https://github.com/vaibhavgeometer/ddu-result-code.git
 ## Usage
 
 
-
-
-
-
-```
-
 _For details, see the [documentation](docs) or browse the code in this repository._
 
 ---

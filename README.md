@@ -9,7 +9,7 @@
 
 ## Overview
 
-**ddu-result-code** is a library/repository maintained by [@vaibhavgeometer](https://github.com/vaibhavgeometer) and aims to provide robust handling of result codes for your applications. It is designed for clarity, extensibility, and efficient error/result management.
+**ddu-result-code** is a library/repository maintained by [@vaibhavgeometer](https://github.com/vaibhavgeometer)
 
 _Describe here: project goal and what makes it useful or unique. If this project is used with specific frameworks or tools, mention that._
 
@@ -17,11 +17,9 @@ _Describe here: project goal and what makes it useful or unique. If this project
 
 ## Features
 
-- Clear definition and management of result codes
-- Extensible codebase for custom applications
-- Easy integration into existing projects
-- Well-documented functions and classes
-- Actively maintained by the community
+- 
+- 
+
 
 ---
 
@@ -41,23 +39,11 @@ _If you distribute as a package, add npm/pip/cargo/etc commands here._
 
 _Include a basic usage example or code snippet. Replace with real code when available._
 
-```python
-from ddu_result_code import ResultCode
 
-result = ResultCode.SUCCESS
-if result.is_success():
-    print("Operation was successful!")
-```
 
 Or for your specific language/environment:
 
-```js
-// Example for JavaScript usage
-import { ResultCode } from 'ddu-result-code';
 
-if (ResultCode.SUCCESS) {
-  console.log("Operation completed successfully!");
-}
 ```
 
 _For details, see the [documentation](docs) or browse the code in this repository._

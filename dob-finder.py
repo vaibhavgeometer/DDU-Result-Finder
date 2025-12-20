@@ -102,7 +102,7 @@ async def fetch_for_roll(session, roll_no, semester, priority_groups, month_filt
     roll_pbar.update(1)
 
 async def run_custom_roll_search(roll_numbers, semester, month_filter):
-    priority_groups = [[2001,2002,2003,2004,2005,2006,2007,2008,2009,2010]]
+    priority_groups = [[2003,2004,2005,2006,2007,2008],[1999,2000,2001,2002,2009,2010],[1996,1997,1998,2011,2012,2013]]
     filename = os.path.join(DRIVE_PATH, f"ddu_custom_results.xlsx")
 
     if os.path.exists(filename):

@@ -1,7 +1,6 @@
 import pdfplumber
 import re
 import openpyxl
-from openpyxl.styles import PatternFill
 import os
 
 pdf_files = [
@@ -9,8 +8,6 @@ pdf_files = [
     "Information/merged_semester_2.pdf",
     "Information/merged_semester_3.pdf"
 ]
-
-black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
 
 wb = openpyxl.Workbook()
 if wb.active:
@@ -110,12 +107,6 @@ for pdf_file in pdf_files:
                 
         subjects = get_subjects_from_student(student_text)
         
-        # Determine Stream based on actual subjects to avoid false positives
-        stream = "MATH"
-        for code in subjects.keys():
-            if code.startswith("BOT") or code.startswith("ZOO"):
-                stream = "BIO"
-                break
         
         all_subject_codes.update(subjects.keys())
         
@@ -123,7 +114,6 @@ for pdf_file in pdf_files:
             student_data_list.append({
                 "roll": roll,
                 "name": name,
-                "stream": stream,
                 "sgpa": sgpa,
                 "cgpa": cgpa,
                 "result": result,
@@ -131,40 +121,35 @@ for pdf_file in pdf_files:
                 "subjects": subjects
             })
 
+    # Sort students by SGPA descending for ranking
+    student_data_list.sort(key=lambda x: (x["sgpa"] if isinstance(x["sgpa"], (int, float)) else 0), reverse=True)
+    
     sorted_subject_codes = sorted(list(all_subject_codes))
     
     ws = wb.create_sheet(title=os.path.basename(pdf_file).replace('.pdf', ''))
     
-    headers = ["Roll Number", "Student's Name", "Math/Bio", "SGPA", "CGPA", "Result", "Carry Over Paper"] + sorted_subject_codes
+    # Headers aligned with 1st Sem.xlsx (Rank, Roll, Name, SGPA, Result, Subjects..., Carry Over Paper)
+    headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
     ws.append(headers)
     
-    for student in student_data_list:
+    for rank, student in enumerate(student_data_list, 1):
         try:
             row_data = [
+                rank,
                 student["roll"],
                 student["name"],
-                student["stream"],
                 student["sgpa"],
-                student["cgpa"],
-                student["result"],
-                student["carry"]
+                student["result"]
             ]
             
-            subject_presence = []
             for code in sorted_subject_codes:
                 mark = student["subjects"].get(code, "")
                 row_data.append(mark)
-                subject_presence.append(code in student["subjects"])
+            
+            row_data.append(student["carry"])
                 
             ws.append(row_data)
-            row_index = ws.max_row
-            
-            for idx, present in enumerate(subject_presence):
-                if not present:
-                    # 7 base headers + 1-based indexing = 8th column for 1st subject
-                    cell = ws.cell(row=row_index, column=8 + idx)
-                    cell.fill = black_fill
-                    
+
         except Exception as e:
             print(f"Error writing student {student['roll']} to Excel: {e}")
 

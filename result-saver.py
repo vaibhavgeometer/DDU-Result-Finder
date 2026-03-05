@@ -200,7 +200,7 @@ def process_semester(sem_input, df, driver_path, position):
 
     # --- MERGING PROCESS ---
     tqdm.write(f"🔄 [{target_semester}] Starting merging process...")
-    output_pdf_path = os.path.join("Information", f"merged_semester_{sem_input}.pdf")
+    output_pdf_path = os.path.join("Information", f"{sem_input}.pdf")
     
     writer = PdfWriter()
     

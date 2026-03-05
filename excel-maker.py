@@ -128,19 +128,35 @@ for pdf_file in pdf_files:
     
     ws = wb.create_sheet(title=os.path.basename(pdf_file).replace('.pdf', ''))
     
-    # Headers aligned with 1st Sem.xlsx (Rank, Roll, Name, SGPA, Result, Subjects..., Carry Over Paper)
-    headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
+    is_sem_1 = "semester_1" in pdf_file.lower()
+    
+    # Headers aligned with 1st Sem.xlsx, adding CGPA for Sem 2 and above
+    if is_sem_1:
+        headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
+    else:
+        headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "CGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
+        
     ws.append(headers)
     
     for rank, student in enumerate(student_data_list, 1):
         try:
-            row_data = [
-                rank,
-                student["roll"],
-                student["name"],
-                student["sgpa"],
-                student["result"]
-            ]
+            if is_sem_1:
+                row_data = [
+                    rank,
+                    student["roll"],
+                    student["name"],
+                    student["sgpa"],
+                    student["result"]
+                ]
+            else:
+                row_data = [
+                    rank,
+                    student["roll"],
+                    student["name"],
+                    student["sgpa"],
+                    student["cgpa"],
+                    student["result"]
+                ]
             
             for code in sorted_subject_codes:
                 mark = student["subjects"].get(code, "")

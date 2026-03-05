@@ -1,14 +1,6 @@
-# Run this code in Google Colab
+# Run this code locally
 
-from google.colab import drive
 import os
-
-# Mount Google Drive
-drive.mount('/content/drive', force_remount=True)
-
-import nest_asyncio
-nest_asyncio.apply()
-
 import asyncio
 import aiohttp
 from aiohttp import ClientSession
@@ -18,8 +10,8 @@ import pandas as pd
 import re
 
 # Constants
-DRIVE_PATH = "/content/drive/MyDrive/DDU_Results/"
-os.makedirs(DRIVE_PATH, exist_ok=True)
+OUTPUT_DIR = "Information"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def extract_form_data(html):
     viewstate = re.search(r'id="__VIEWSTATE" value="([^"]+)"', html)
@@ -59,7 +51,7 @@ def generate_dates_interleaved(years, month=None):
     return dates
 
 async def try_dob(session, roll_no, semester, date_of_birth, semaphore):
-    url = "https://ddugorakhpur.com/result2023/searchresult_new.aspx"
+    url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
     async with semaphore:
         try:
             async with session.get(url) as resp:
@@ -92,18 +84,24 @@ async def fetch_for_roll(session, roll_no, semester, priority_groups, month_filt
                 if result:
                     async with results_lock:
                         results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': result})
-                        pd.DataFrame(results).to_excel(filename, index=False)
+                        try:
+                            pd.DataFrame(results).to_excel(filename, index=False)
+                        except PermissionError:
+                            pass # Will be saved later
                     roll_pbar.update(1)
                     return
     # If not found
     async with results_lock:
         results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': "N.A."})
-        pd.DataFrame(results).to_excel(filename, index=False)
+        try:
+            pd.DataFrame(results).to_excel(filename, index=False)
+        except PermissionError:
+            pass
     roll_pbar.update(1)
 
 async def run_custom_roll_search(roll_numbers, semester, month_filter):
     priority_groups = [[2003,2004,2005,2006,2007,2008],[1999,2000,2001,2002,2009,2010],[1996,1997,1998,2011,2012,2013]]
-    filename = os.path.join(DRIVE_PATH, f"ddu_custom_results.xlsx")
+    filename = os.path.join(OUTPUT_DIR, f"ddu_custom_results.xlsx")
 
     if os.path.exists(filename):
         existing_df = pd.read_excel(filename)
@@ -127,6 +125,14 @@ async def run_custom_roll_search(roll_numbers, semester, month_filter):
                 for rn in remaining_rolls
             ]
             await asyncio.gather(*tasks)
+
+    while True:
+        try:
+            pd.DataFrame(results).to_excel(filename, index=False)
+            break
+        except PermissionError:
+            print(f"\n⚠️ Please close {filename} to save final results. Retrying in 5 seconds...")
+            await asyncio.sleep(5)
 
     print(f"\n✅ Results saved to: {filename}")
 

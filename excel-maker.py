@@ -1,13 +1,12 @@
-import os
+import docx
 import re
 import openpyxl
-import docx
-from pdf2docx import Converter
+import os
 
-pdf_files = [
-    os.path.join("Information", "Saved Results", "1.pdf"),
-    os.path.join("Information", "Saved Results", "2.pdf"),
-    os.path.join("Information", "Saved Results", "3.pdf")
+docx_files = [
+    os.path.join("Information", "pdf2docx", "1.docx"),
+    os.path.join("Information", "pdf2docx", "2.docx"),
+    os.path.join("Information", "pdf2docx", "3.docx")
 ]
 
 def get_next_distinct(cells_matrix, keyword):
@@ -99,56 +98,38 @@ def parse_mark(mark_str):
         return -1
 
 def main():
-    os.makedirs(os.path.join("Information", "pdf2docx"), exist_ok=True)
     os.makedirs(os.path.join("Information", "docx2xlsx"), exist_ok=True)
     
-    wb_all = openpyxl.Workbook()
-    if wb_all.active:
-        wb_all.remove(wb_all.active)
-        
-    for pdf_file in pdf_files:
-        if not os.path.exists(pdf_file):
-            print(f"File not found: {pdf_file}")
-            continue
-            
-        docx_file = os.path.join("Information", "pdf2docx", os.path.basename(pdf_file).replace('.pdf', '.docx'))
-        
-        # Convert to DOCX if not present
+    for docx_file in docx_files:
         if not os.path.exists(docx_file):
-            print(f"Converting {pdf_file} to {docx_file} using pdf2docx...")
-            try:
-                cv = Converter(pdf_file)
-                cv.convert(docx_file, start=0, end=None)
-                cv.close()
-            except Exception as e:
-                print(f"Failed to convert {pdf_file} to DOCX. Error: {e}")
-                continue
+            print(f"File not found: {docx_file}")
+            continue
             
         print(f"Processing {docx_file}...")
-        try:
-            student_data_list, all_subject_codes = extract_from_docx(docx_file)
-        except Exception as e:
-            print(f"Error reading {docx_file}: {e}")
-            continue
+        student_data_list, all_subject_codes = extract_from_docx(docx_file)
         
         if not student_data_list:
             print(f"No student data found in {docx_file}.")
             continue
             
-        # Overall ranks per semester
+        wb = openpyxl.Workbook()
+        if wb.active:
+            wb.remove(wb.active)
+            
+        # 1. Overall Results Sheet
         student_data_list.sort(key=lambda x: (x["sgpa"] if isinstance(x["sgpa"], (int, float)) else 0), reverse=True)
         sorted_subject_codes = sorted(list(all_subject_codes))
         
-        ws_all = wb_all.create_sheet(title=os.path.basename(docx_file).replace('.docx', ''))
+        ws_overall = wb.create_sheet(title="Overall Results")
         
-        is_sem_1 = "1" in os.path.basename(docx_file).lower()
+        is_sem_1 = "1.docx" in docx_file.lower()
         
         if is_sem_1:
             headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
         else:
             headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "CGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
             
-        ws_all.append(headers)
+        ws_overall.append(headers)
         
         for rank, student in enumerate(student_data_list, 1):
             if is_sem_1:
@@ -174,9 +155,9 @@ def main():
                 row_data.append(mark)
                 
             row_data.append(student["carry"])
-            ws_all.append(row_data)
-            
-        # Group students by subject
+            ws_overall.append(row_data)
+        
+        # 2. Subject Ranks Sheets
         subject_students_map = {}
         for student in student_data_list:
             for code, marks in student["subjects"].items():
@@ -188,19 +169,17 @@ def main():
                     "marks": marks
                 })
         
-        wb_subjects = openpyxl.Workbook()
-        if wb_subjects.active:
-            wb_subjects.remove(wb_subjects.active)
-            
         sorted_subjects = sorted(list(subject_students_map.keys()))
         
         for code in sorted_subjects:
+            # Sanitize sheet name if it exceeds 31 chars or has invalid chars
             safe_sheet_name = re.sub(r'[\\*?:/\[\]]', '_', code)[:31]
-            ws_subj = wb_subjects.create_sheet(title=safe_sheet_name)
+            ws_subj = wb.create_sheet(title=safe_sheet_name)
             
             headers = ["Subject Rank", "Roll Number", "Student's Name", "Marks Obtained"]
             ws_subj.append(headers)
             
+            # Sort students by marks descending
             students_in_subject = subject_students_map[code]
             students_in_subject.sort(key=lambda x: parse_mark(x["marks"]), reverse=True)
             
@@ -212,20 +191,11 @@ def main():
                     student["marks"]
                 ])
                 
-        if wb_subjects.sheetnames:
-            base_name = os.path.basename(docx_file).replace('.docx', '')
-            output_file_subjects = os.path.join("Information", "docx2xlsx", f"{base_name}_subject_ranks.xlsx")
-            wb_subjects.save(output_file_subjects)
-            print(f"✅ Saved subject-wise ranking for {base_name} as {output_file_subjects}")
-        else:
-            print(f"No subject data found for {docx_file}, skipping subject workbook.")
-
-    if wb_all.sheetnames:
-        output_file_all = os.path.join("Information", "docx2xlsx", "all_results.xlsx")
-        wb_all.save(output_file_all)
-        print(f"\n✅ Consolidated Excel file saved as {output_file_all}\n")
-    else:
-        print("\n❌ No data was found across any files. No master Excel generated.\n")
+        # Save Excel file per semester
+        base_name = os.path.basename(docx_file).replace('.docx', '')
+        output_file = os.path.join("Information", "docx2xlsx", f"Semester_{base_name}_Results.xlsx")
+        wb.save(output_file)
+        print(f"✅ Saved results for {base_name} as {output_file}\n")
 
 if __name__ == "__main__":
     main()

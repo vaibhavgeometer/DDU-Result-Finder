@@ -12,6 +12,7 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from pypdf import PdfReader, PdfWriter
+import requests
 
 def process_semester(sem_input, df, driver_path, position):
     target_semester = "Semester " + sem_input
@@ -248,12 +249,31 @@ if __name__ == "__main__":
     driver_path = ChromeDriverManager().install()
 
     # Read Excel
-    file_path = "Math Group Student Info.xlsx"
+    file_path = "Information/Math Group Student Info.xlsx"
     if not os.path.exists(file_path):
         print(f"❌ Could not find {file_path}")
         exit(1)
         
     df = pd.read_excel(file_path)
+    url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
+
+    # Check website status
+    print("🔍 Checking website status...")
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 503:
+            print("🛑 Website is DOWN: Service Unavailable (503)")
+            print("Please try again later.")
+            exit(1)
+        elif response.status_code != 200:
+            print(f"🛑 Website returned HTTP {response.status_code}")
+            print("Please try again later.")
+            exit(1)
+        print("✅ Website is UP!")
+    except Exception as e:
+        print(f"🛑 Error connecting to website: {e}")
+        print("Please check your internet connection and try again.")
+        exit(1)
 
     # Use ThreadPoolExecutor to run tasks simultaneously
     print(f"🚀 Launching {len(target_semester_list)} simultaneous browser sessions...\n")

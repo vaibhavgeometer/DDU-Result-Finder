@@ -62,178 +62,186 @@ def process_semester(sem_input, df, driver_path, position):
 
     # Initialize driver
     driver = webdriver.Chrome(service=Service(driver_path), options=options)
+    driver.set_page_load_timeout(30)
+    
+    try:
+        # URL
+        url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
 
-    # URL
-    url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
-
-    # Open the page once per semester
-    driver.get(url)
-    time.sleep(2)
-    
-    # Setup progress bar
-    pbar = tqdm(total=len(df), desc=f"Semester {sem_input}", position=position, leave=True)
-    
-    # Loop through students
-    for index, row in df.iterrows():
-        roll_no = str(row['Roll Number']).zfill(6)
-        roll_suffix = roll_no[-3:]  # Last three digits
-        dob = row['Date of Birth']
-    
-        # Skip if no DOB
-        if pd.isna(dob):
-            pbar.update(1)
-            continue
-    
-        # Format DOB
-        if isinstance(dob, pd.Timestamp):
-            dob_str = dob.strftime('%d-%m-%Y')
-        else:
-            try:
-                dob_obj = pd.to_datetime(dob)
-                dob_str = dob_obj.strftime('%d-%m-%Y')
-            except:
-                dob_str = dob
-                
-        for attempt in range(3):
-            skip = False
-            try:
-                # Always refresh the base page
-                driver.get(url)
-                time.sleep(2)
+        # Open the page once per semester
+        driver.get(url)
+        time.sleep(2)
         
-                # Fill Semester
-                semester_dropdown = Select(driver.find_element(By.ID, "ddlsem"))
-                semester_dropdown.select_by_visible_text(target_semester)
+        # Setup progress bar
+        pbar = tqdm(total=len(df), desc=f"Semester {sem_input}", position=position, leave=True)
         
-                # Fill Roll No and DOB
-                roll_input = driver.find_element(By.ID, "txtRollno")
-                roll_input.clear()
-                roll_input.send_keys(roll_no)
+        # Loop through students
+        for index, row in df.iterrows():
+            roll_no = str(row['Roll Number']).zfill(6)
+            roll_suffix = roll_no[-3:]  # Last three digits
+            dob = row['Date of Birth']
         
-                dob_input = driver.find_element(By.ID, "txtDob")
-                dob_input.clear()
-                dob_input.send_keys(dob_str)
+            # Skip if no DOB
+            if pd.isna(dob):
+                pbar.update(1)
+                continue
         
-                # Click Search Result
-                search_button = driver.find_element(By.ID, "btnSearch")
-                search_button.click()
-        
-                time.sleep(2)  # Wait for the result page to load
-    
-                # Handle possible "Record Not Found" JS Alert
+            # Format DOB
+            if isinstance(dob, pd.Timestamp):
+                dob_str = dob.strftime('%d-%m-%Y')
+            else:
                 try:
-                    alert = driver.switch_to.alert
-                    alert_text = alert.text
-                    if "no record found" in alert_text.lower() or "not found" in alert_text.lower() or "invalid" in alert_text.lower():
+                    dob_obj = pd.to_datetime(dob, dayfirst=True)
+                    dob_str = dob_obj.strftime('%d-%m-%Y')
+                except:
+                    dob_str = str(dob)
+                    
+            for attempt in range(3):
+                skip = False
+                try:
+                    # Always refresh the base page
+                    driver.get(url)
+                    time.sleep(2)
+            
+                    # Fill Semester
+                    semester_dropdown = Select(driver.find_element(By.ID, "ddlsem"))
+                    semester_dropdown.select_by_visible_text(target_semester)
+            
+                    # Fill Roll No and DOB
+                    roll_input = driver.find_element(By.ID, "txtRollno")
+                    roll_input.clear()
+                    roll_input.send_keys(roll_no)
+            
+                    dob_input = driver.find_element(By.ID, "txtDob")
+                    dob_input.clear()
+                    dob_input.send_keys(dob_str)
+            
+                    # Click Search Result
+                    search_button = driver.find_element(By.ID, "btnSearch")
+                    search_button.click()
+            
+                    time.sleep(2)  # Wait for the result page to load
+        
+                    # Handle possible "Record Not Found" JS Alert
+                    try:
+                        alert = driver.switch_to.alert
+                        alert_text = alert.text
+                        if "no record found" in alert_text.lower() or "not found" in alert_text.lower() or "invalid" in alert_text.lower():
+                            alert.accept()
+                            skip = True
+                            break
                         alert.accept()
+                    except:
+                        pass
+                        
+                    # Handle "No Record found" text in page source (matches the red label)
+                    if not skip and "no record found" in driver.page_source.lower():
                         skip = True
                         break
-                    alert.accept()
-                except:
-                    pass
-                    
-                # Handle "No Record found" text in page source (matches the red label)
-                if not skip and "no record found" in driver.page_source.lower():
-                    skip = True
-                    break
-    
-                # Check if print button exists (Fail-safe, if the button is missing it implies no valid result loaded)
-                try:
-                    print_button = driver.find_element(By.XPATH, "//input[@value='Print Result']")
-                except:
-                    skip = True
-                    break
         
-                # Save main window handle
-                main_window = driver.current_window_handle
-        
-                # Click Print Result
-                print_button.click()
-                time.sleep(2)
-        
-                # Switch to the new popup window
-                for handle in driver.window_handles:
-                    if handle != main_window:
-                        driver.switch_to.window(handle)
-                        break
-        
-                # Trigger Save as PDF directly using Chrome DevTools Protocol
-                pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
-                    "printBackground": True,
-                    "preferCSSPageSize": True
-                })
-        
-                new_filename = f"{roll_suffix}.pdf"
-                new_filepath = os.path.join(output_folder, new_filename)
-        
-                with open(new_filepath, "wb") as f:
-                    f.write(base64.b64decode(pdf_data['data']))
-        
-                # Close the popup window
-                driver.close()
-        
-                # Return to main window
-                driver.switch_to.window(main_window)
-                
-                # Success
-                break
-        
-            except Exception as e:
-                error_msg = str(e).lower()
-                if attempt < 2:
-                    # If it's a critical webdriver crash/connection issue, restart the driver
-                    if "connection" in error_msg or "actively refused" in error_msg or "forcibly closed" in error_msg or "max retries" in error_msg or "disconnected" in error_msg:
-                        try:
-                            driver.quit()
-                        except:
-                            pass
-                        # Re-initialize driver
-                        driver = webdriver.Chrome(service=Service(driver_path), options=options)
+                    # Check if print button exists (Fail-safe, if the button is missing it implies no valid result loaded)
+                    try:
+                        print_button = driver.find_element(By.XPATH, "//input[@value='Print Result']")
+                    except Exception as e:
+                        raise Exception("Print button not found. Retrying in case of slow load...") from e
+            
+                    # Save main window handle
+                    main_window = driver.current_window_handle
+            
+                    # Click Print Result
+                    print_button.click()
                     time.sleep(2)
-                else:
-                    error_name = type(e).__name__
-                    tqdm.write(f"❌ [{target_semester}] Failed Roll No: {roll_no} after 3 attempts ({error_name})")
             
-        pbar.update(1)
+                    # Switch to the new popup window
+                    for handle in driver.window_handles:
+                        if handle != main_window:
+                            driver.switch_to.window(handle)
+                            break
             
-    pbar.close()
-    tqdm.write(f"🎉 [{target_semester}] Finished downloading PDFs!")
+                    # Trigger Save as PDF directly using Chrome DevTools Protocol
+                    pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
+                        "printBackground": True,
+                        "preferCSSPageSize": True
+                    })
+            
+                    new_filename = f"{roll_suffix}.pdf"
+                    new_filepath = os.path.join(output_folder, new_filename)
+            
+                    with open(new_filepath, "wb") as f:
+                        f.write(base64.b64decode(pdf_data['data']))
+            
+                    # Close the popup window
+                    driver.close()
+            
+                    # Return to main window
+                    driver.switch_to.window(main_window)
+                    
+                    # Success
+                    break
+            
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if attempt < 2:
+                        # If it's a critical webdriver crash/connection issue, restart the driver
+                        if "connection" in error_msg or "actively refused" in error_msg or "forcibly closed" in error_msg or "max retries" in error_msg or "disconnected" in error_msg:
+                            try:
+                                driver.quit()
+                            except:
+                                pass
+                            # Re-initialize driver
+                            driver = webdriver.Chrome(service=Service(driver_path), options=options)
+                            driver.set_page_load_timeout(30)
+                        time.sleep(2)
+                    else:
+                        error_name = type(e).__name__
+                        tqdm.write(f"❌ [{target_semester}] Failed Roll No: {roll_no} after 3 attempts ({error_name})")
+                
+            pbar.update(1)
+                
+        pbar.close()
+        tqdm.write(f"🎉 [{target_semester}] Finished downloading PDFs!")
 
-    # --- MERGING PROCESS ---
-    tqdm.write(f"🔄 [{target_semester}] Starting merging process...")
-    output_pdf_path = os.path.join("Information", "Saved Results", f"{sem_input}.pdf")
-    
-    writer = PdfWriter()
-    
-    # Get all PDF files in the folder (sort alphabetically)
-    pdf_files = [f for f in os.listdir(output_folder) if f.lower().endswith(".pdf")]
-    pdf_files.sort()
-    
-    # Loop through each file and add the first page
-    for pdf_file in pdf_files:
-        pdf_path = os.path.join(output_folder, pdf_file)
+        # --- MERGING PROCESS ---
+        tqdm.write(f"🔄 [{target_semester}] Starting merging process...")
+        output_pdf_path = os.path.join("Information", "Saved Results", f"{sem_input}.pdf")
+        
+        writer = PdfWriter()
+        
+        # Get all PDF files in the folder (sort alphabetically)
+        pdf_files = [f for f in os.listdir(output_folder) if f.lower().endswith(".pdf")]
+        pdf_files.sort()
+        
+        # Loop through each file and add the first page
+        for pdf_file in pdf_files:
+            pdf_path = os.path.join(output_folder, pdf_file)
+            try:
+                reader = PdfReader(pdf_path)
+                if len(reader.pages) > 0:
+                    writer.add_page(reader.pages[0])
+            except Exception as e:
+                tqdm.write(f"❌ [{target_semester}] Error processing {pdf_file}: {e}")
+        
+        # Write the combined PDF
+        if len(writer.pages) > 0:
+            with open(output_pdf_path, "wb") as out_file:
+                writer.write(out_file)
+            tqdm.write(f"✅ [{target_semester}] Merged PDF saved to {output_pdf_path}")
+        else:
+            tqdm.write(f"⚠️ [{target_semester}] No valid PDFs found to merge. Empty PDF was not created.")
+        
+        # --- CLEANUP PROCESS ---
+        tqdm.write(f"🧹 [{target_semester}] Cleaning up individual PDF files...")
         try:
-            reader = PdfReader(pdf_path)
-            if len(reader.pages) > 0:
-                writer.add_page(reader.pages[0])
+            shutil.rmtree(output_folder)
+            tqdm.write(f"✅ [{target_semester}] Removed intermediate folder.")
         except Exception as e:
-            tqdm.write(f"❌ [{target_semester}] Error processing {pdf_file}: {e}")
-    
-    # Write the combined PDF
-    with open(output_pdf_path, "wb") as out_file:
-        writer.write(out_file)
-    
-    tqdm.write(f"✅ [{target_semester}] Merged PDF saved to {output_pdf_path}")
-    
-    # --- CLEANUP PROCESS ---
-    tqdm.write(f"🧹 [{target_semester}] Cleaning up individual PDF files...")
-    try:
-        shutil.rmtree(output_folder)
-        tqdm.write(f"✅ [{target_semester}] Removed intermediate folder.")
-    except Exception as e:
-        tqdm.write(f"⚠️ [{target_semester}] Could not remove folder {output_folder}: {e}")
+            tqdm.write(f"⚠️ [{target_semester}] Could not remove folder {output_folder}: {e}")
 
-    driver.quit()
+    finally:
+        try:
+            driver.quit()
+        except:
+            pass
 
 if __name__ == "__main__":
     # Ask for semester input

@@ -4,9 +4,9 @@ import openpyxl
 import os
 
 pdf_files = [
-    "Information/merged_semester_1.pdf",
-    "Information/merged_semester_2.pdf",
-    "Information/merged_semester_3.pdf"
+    "Information/1.pdf",
+    "Information/2.pdf",
+    "Information/3.pdf"
 ]
 
 wb = openpyxl.Workbook()

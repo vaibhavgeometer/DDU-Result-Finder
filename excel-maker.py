@@ -1,6 +1,8 @@
 import docx
 import re
 import openpyxl
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 import os
 
 docx_files = [
@@ -118,7 +120,15 @@ def main():
             
         # 1. Overall Results Sheet
         student_data_list.sort(key=lambda x: (x["sgpa"] if isinstance(x["sgpa"], (int, float)) else 0), reverse=True)
-        sorted_subject_codes = sorted(list(all_subject_codes))
+        
+        base_order = ["MAT", "PHY", "CHE", "AE", "SE"]
+        def subject_sort_key(code):
+            for i, prefix in enumerate(base_order):
+                if code.startswith(prefix):
+                    return (i, code)
+            return (len(base_order), code)
+            
+        sorted_subject_codes = sorted(list(all_subject_codes), key=subject_sort_key)
         
         ws_overall = wb.create_sheet(title="Overall Results")
         
@@ -169,7 +179,7 @@ def main():
                     "marks": marks
                 })
         
-        sorted_subjects = sorted(list(subject_students_map.keys()))
+        sorted_subjects = sorted(list(subject_students_map.keys()), key=subject_sort_key)
         
         for code in sorted_subjects:
             # Sanitize sheet name if it exceeds 31 chars or has invalid chars
@@ -191,6 +201,33 @@ def main():
                     student["marks"]
                 ])
                 
+        # Apply styles
+        arial_14 = Font(name='Arial', size=14)
+        arial_14_bold = Font(name='Arial', size=14, bold=True)
+        center_aligned = Alignment(horizontal='center', vertical='center')
+        
+        for ws in wb.worksheets:
+            for row in ws.iter_rows():
+                for cell in row:
+                    if cell.row == 1:
+                        cell.font = arial_14_bold
+                    else:
+                        cell.font = arial_14
+                    cell.alignment = center_aligned
+                    
+            for col in ws.columns:
+                max_length = 0
+                if not col: continue
+                col_letter = col[0].column_letter
+                for cell in col:
+                    try:
+                        v = str(cell.value) if cell.value is not None else ""
+                        if len(v) > max_length:
+                            max_length = len(v)
+                    except:
+                        pass
+                ws.column_dimensions[col_letter].width = (max_length + 2) * 1.5
+
         # Save Excel file per semester
         base_name = os.path.basename(docx_file).replace('.docx', '')
         output_file = os.path.join("Information", "docx2xlsx", f"Semester_{base_name}_Results.xlsx")

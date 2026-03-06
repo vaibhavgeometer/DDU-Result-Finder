@@ -1,145 +1,156 @@
-import pdfplumber
+import os
 import re
 import openpyxl
-import os
+import docx
+from pdf2docx import Converter
 
 pdf_files = [
-    "Information/1.pdf",
-    "Information/2.pdf",
-    "Information/3.pdf"
+    os.path.join("Information", "Saved Results", "1.pdf"),
+    os.path.join("Information", "Saved Results", "2.pdf"),
+    os.path.join("Information", "Saved Results", "3.pdf")
 ]
 
-wb = openpyxl.Workbook()
-if wb.active:
-    wb.remove(wb.active)
+def get_next_distinct(cells_matrix, keyword):
+    for row in cells_matrix:
+        if keyword in row:
+            idx = row.index(keyword)
+            # Find the first cell after keyword that is not the keyword
+            for i in range(idx, len(row)):
+                if row[i] != keyword and row[i].strip():
+                    return row[i].strip()
+    return ""
 
-def safe_search(pattern, text, group=1, default=None, flags=0):
-    match = re.search(pattern, text, flags)
-    return match.group(group).strip() if match else default
-
-def get_subjects_from_student(text):
-    subjects = {}
-    unresolved_subjects = []
-    
-    for line in text.splitlines():
-        # Find all subject codes on this line, allowing them to be glued to lowercase text
-        # e.g. PHED104FSports. `\b([A-Z]{1,6}\d+[A-Za-z0-9\-\*]*)\b` finds the whole block.
-        codes_on_line = re.findall(r"\b([A-Z]{1,6}\d+[A-Za-z0-9\-\*]*)\b", line)
-        for c in codes_on_line:
-            # isolate the actual code part (uppercase letters, digits, and ending symbols, stopping before any letter that is followed by lowercase)
-            # Find the split point: the index of the first lowercase letter
-            idx = next((i for i, ch in enumerate(c) if ch.islower()), len(c))
-            # If there was a lowercase letter, the preceding uppercase letter probably belongs to the word (e.g. "S" in "Sports").
-            if idx < len(c) and idx > 0 and c[idx-1].isupper():
-                idx -= 1
-            code_only = c[:idx].upper()
-            
-            # Additional validation: the code must contain a digit to be real
-            if re.search(r"\d", code_only):
-                # Reject enrollment numbers (e.g. DDU5162...) or long digit strings like result2023
-                if not re.search(r"\d{5,}", code_only) and not code_only.startswith("DDU") and "RESULT" not in code_only:
-                    unresolved_subjects.append(code_only)
-                
-        # Find all 5-element mark blocks on this line (CIA, ESE, Total etc.)
-        # A mark is either a digit, or '---' / '-'
-        mark_blocks = re.findall(r"((?:(?:\d+|\-{1,3})\s+){4}(?:\d+|\-{1,3}))", line)
-        
-        for block in mark_blocks:
-            parts = block.strip().split()
-            if len(parts) >= 5:
-                # The 5th element is the Total Marks
-                obtained = parts[4]
-                # Assign this mark block to the oldest unresolved subject
-                if unresolved_subjects:
-                    subj = unresolved_subjects.pop(0)
-                    subjects[subj] = obtained
-                    
-    return subjects
-
-for pdf_file in pdf_files:
-    if not os.path.exists(pdf_file):
-        print(f"File not found: {pdf_file}")
-        continue
-        
-    print(f"Processing {pdf_file}...")
-    
-    with pdfplumber.open(pdf_file) as pdf:
-        full_text = ""
-        for page in pdf.pages:
-            t = page.extract_text()
-            if t:
-                full_text += t + "\n"
-
-    students_raw = re.split(r"Grade Sheet of Semester Examination.*?\n", full_text)[1:]
-    if not students_raw:
-        print(f"No student data found in {pdf_file}. Check if 'Grade Sheet' text matches.")
-        continue
-        
-    all_subject_codes = set()
+def extract_from_docx(docx_file):
+    doc = docx.Document(docx_file)
     student_data_list = []
+    all_subject_codes = set()
     
-    for student_text in students_raw:
-        roll = safe_search(r"Roll No\s+(\d+)", student_text)
-        
-        name = safe_search(r"Name\s+([^\n]+)", student_text)
-        if name:
-            name = re.sub(r"\s+Student Type.*", "", name, flags=re.IGNORECASE).strip()
-        
-        sgpa_match = re.search(r"\(SGPA\)\s*:\s*([0-9]+(?:\.[0-9]+)?)", student_text)
-        sgpa = float(sgpa_match.group(1)) if sgpa_match else ""
-        
-        cgpa_match = re.search(r"\(CGPA\)\s*:\s*([0-9]+(?:\.[0-9]+)?)", student_text)
-        cgpa = float(cgpa_match.group(1)) if cgpa_match else ""
-        
-        result = safe_search(r"Result\s*:\s*([^\n]+)", student_text)
-        if not result:
-            result = "FAILED"
+    for table in doc.tables:
+        cells_matrix = []
+        for row in table.rows:
+            # Replaces newlines with spaces and truncates whitespaces
+            row_cells = [c.text.strip().replace('\n', ' ') for c in row.cells]
+            cells_matrix.append(row_cells)
             
+        name = get_next_distinct(cells_matrix, "Name")
+        roll = get_next_distinct(cells_matrix, "Roll No")
+        
+        if not roll:
+            continue
+            
+        sgpa = ""
+        cgpa = ""
+        result = "FAILED"
         carry = "-"
-        for line in student_text.splitlines():
-            if "Carry Over Paper" in line:
-                parts = line.split(":", 1)
-                if len(parts) > 1:
-                    val = parts[1].strip()
+        
+        for row in cells_matrix:
+            # Check unique cells in the row
+            for cell in set(row):
+                if "Result :" in cell:
+                    result = cell.split("Result :")[1].strip()
+                if "(SGPA) :" in cell:
+                    try:
+                        sgpa = float(cell.split("(SGPA) :")[1].strip())
+                    except:
+                        pass
+                if "(CGPA) :" in cell:
+                    try:
+                        cgpa = float(cell.split("(CGPA) :")[1].strip())
+                    except:
+                        pass
+                if "Carry Over Paper :" in cell:
+                    val = cell.split("Carry Over Paper :")[1].strip().rstrip(",")
                     if val:
-                        carry = val.rstrip(",").strip()
-                break
+                        carry = val
+                        
+        subjects = {}
+        obt_idx = None
+        for row_cells in cells_matrix:
+            if "Obt. Marks" in row_cells:
+                obt_idx = row_cells.index("Obt. Marks")
                 
-        subjects = get_subjects_from_student(student_text)
-        
-        
+            if obt_idx is not None:
+                code = row_cells[0]
+                # If there's a valid subject code
+                if re.match(r"^[A-Z]{1,6}\d+[A-Za-z0-9\-\*]*$", code):
+                    if obt_idx < len(row_cells):
+                        marks = row_cells[obt_idx]
+                        if marks:
+                            subjects[code] = marks
+                            
         all_subject_codes.update(subjects.keys())
         
-        if roll:
-            student_data_list.append({
-                "roll": roll,
-                "name": name,
-                "sgpa": sgpa,
-                "cgpa": cgpa,
-                "result": result,
-                "carry": carry,
-                "subjects": subjects
-            })
-
-    # Sort students by SGPA descending for ranking
-    student_data_list.sort(key=lambda x: (x["sgpa"] if isinstance(x["sgpa"], (int, float)) else 0), reverse=True)
-    
-    sorted_subject_codes = sorted(list(all_subject_codes))
-    
-    ws = wb.create_sheet(title=os.path.basename(pdf_file).replace('.pdf', ''))
-    
-    is_sem_1 = "semester_1" in pdf_file.lower()
-    
-    # Headers aligned with 1st Sem.xlsx, adding CGPA for Sem 2 and above
-    if is_sem_1:
-        headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
-    else:
-        headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "CGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
+        student_data_list.append({
+            "roll": roll,
+            "name": name,
+            "sgpa": sgpa,
+            "cgpa": cgpa,
+            "result": result,
+            "carry": carry,
+            "subjects": subjects
+        })
         
-    ws.append(headers)
+    return student_data_list, all_subject_codes
+
+def parse_mark(mark_str):
+    try:
+        return float(mark_str)
+    except:
+        return -1
+
+def main():
+    os.makedirs(os.path.join("Information", "pdf2docx"), exist_ok=True)
+    os.makedirs(os.path.join("Information", "docx2xlsx"), exist_ok=True)
     
-    for rank, student in enumerate(student_data_list, 1):
+    wb_all = openpyxl.Workbook()
+    if wb_all.active:
+        wb_all.remove(wb_all.active)
+        
+    for pdf_file in pdf_files:
+        if not os.path.exists(pdf_file):
+            print(f"File not found: {pdf_file}")
+            continue
+            
+        docx_file = os.path.join("Information", "pdf2docx", os.path.basename(pdf_file).replace('.pdf', '.docx'))
+        
+        # Convert to DOCX if not present
+        if not os.path.exists(docx_file):
+            print(f"Converting {pdf_file} to {docx_file} using pdf2docx...")
+            try:
+                cv = Converter(pdf_file)
+                cv.convert(docx_file, start=0, end=None)
+                cv.close()
+            except Exception as e:
+                print(f"Failed to convert {pdf_file} to DOCX. Error: {e}")
+                continue
+            
+        print(f"Processing {docx_file}...")
         try:
+            student_data_list, all_subject_codes = extract_from_docx(docx_file)
+        except Exception as e:
+            print(f"Error reading {docx_file}: {e}")
+            continue
+        
+        if not student_data_list:
+            print(f"No student data found in {docx_file}.")
+            continue
+            
+        # Overall ranks per semester
+        student_data_list.sort(key=lambda x: (x["sgpa"] if isinstance(x["sgpa"], (int, float)) else 0), reverse=True)
+        sorted_subject_codes = sorted(list(all_subject_codes))
+        
+        ws_all = wb_all.create_sheet(title=os.path.basename(docx_file).replace('.docx', ''))
+        
+        is_sem_1 = "1" in os.path.basename(docx_file).lower()
+        
+        if is_sem_1:
+            headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
+        else:
+            headers = ["Rank", "Roll Number", "Student's Name", "SGPA", "CGPA", "Result"] + sorted_subject_codes + ["Carry Over Paper"]
+            
+        ws_all.append(headers)
+        
+        for rank, student in enumerate(student_data_list, 1):
             if is_sem_1:
                 row_data = [
                     rank,
@@ -157,18 +168,64 @@ for pdf_file in pdf_files:
                     student["cgpa"],
                     student["result"]
                 ]
-            
+                
             for code in sorted_subject_codes:
                 mark = student["subjects"].get(code, "")
                 row_data.append(mark)
-            
-            row_data.append(student["carry"])
                 
-            ws.append(row_data)
+            row_data.append(student["carry"])
+            ws_all.append(row_data)
+            
+        # Group students by subject
+        subject_students_map = {}
+        for student in student_data_list:
+            for code, marks in student["subjects"].items():
+                if code not in subject_students_map:
+                    subject_students_map[code] = []
+                subject_students_map[code].append({
+                    "roll": student["roll"],
+                    "name": student["name"],
+                    "marks": marks
+                })
+        
+        wb_subjects = openpyxl.Workbook()
+        if wb_subjects.active:
+            wb_subjects.remove(wb_subjects.active)
+            
+        sorted_subjects = sorted(list(subject_students_map.keys()))
+        
+        for code in sorted_subjects:
+            safe_sheet_name = re.sub(r'[\\*?:/\[\]]', '_', code)[:31]
+            ws_subj = wb_subjects.create_sheet(title=safe_sheet_name)
+            
+            headers = ["Subject Rank", "Roll Number", "Student's Name", "Marks Obtained"]
+            ws_subj.append(headers)
+            
+            students_in_subject = subject_students_map[code]
+            students_in_subject.sort(key=lambda x: parse_mark(x["marks"]), reverse=True)
+            
+            for rank, student in enumerate(students_in_subject, 1):
+                ws_subj.append([
+                    rank,
+                    student["roll"],
+                    student["name"],
+                    student["marks"]
+                ])
+                
+        if wb_subjects.sheetnames:
+            base_name = os.path.basename(docx_file).replace('.docx', '')
+            output_file_subjects = os.path.join("Information", "docx2xlsx", f"{base_name}_subject_ranks.xlsx")
+            wb_subjects.save(output_file_subjects)
+            print(f"✅ Saved subject-wise ranking for {base_name} as {output_file_subjects}")
+        else:
+            print(f"No subject data found for {docx_file}, skipping subject workbook.")
 
-        except Exception as e:
-            print(f"Error writing student {student['roll']} to Excel: {e}")
+    if wb_all.sheetnames:
+        output_file_all = os.path.join("Information", "docx2xlsx", "all_results.xlsx")
+        wb_all.save(output_file_all)
+        print(f"\n✅ Consolidated Excel file saved as {output_file_all}\n")
+    else:
+        print("\n❌ No data was found across any files. No master Excel generated.\n")
 
-output_file = os.path.join("Information", "all_results.xlsx")
-wb.save(output_file)
-print(f"✅ Consolidated Excel file saved as {output_file}\n")
+if __name__ == "__main__":
+    main()

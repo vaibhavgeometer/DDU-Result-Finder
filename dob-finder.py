@@ -10,7 +10,7 @@ import pandas as pd
 import re
 
 # Constants
-OUTPUT_DIR = "Information"
+OUTPUT_DIR = os.path.join("Information", "Saved DOBs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def extract_form_data(html):

@@ -18,7 +18,7 @@ def process_semester(sem_input, df, driver_path, position):
     target_semester = "Semester " + sem_input
     
     # Create directory to save PDFs for the specific semester
-    output_folder = os.path.join("Information", f"Saved_PDFs_Sem_{sem_input}")
+    output_folder = os.path.join("Information", "Saved Results", f"Saved_PDFs_Sem_{sem_input}")
     os.makedirs(output_folder, exist_ok=True)
     
     # Setup Chrome for automatic PDF saving
@@ -50,7 +50,7 @@ def process_semester(sem_input, df, driver_path, position):
 
     prefs = {
         'printing.print_preview_sticky_settings.appState': json.dumps(settings),
-        'savefile.default_directory': os.path.abspath("Saved_PDFs"),
+        'savefile.default_directory': os.path.abspath(output_folder),
         'profile.default_content_settings.popups': 0,
         'download.prompt_for_download': False,
         'download.directory_upgrade': True
@@ -201,7 +201,7 @@ def process_semester(sem_input, df, driver_path, position):
 
     # --- MERGING PROCESS ---
     tqdm.write(f"🔄 [{target_semester}] Starting merging process...")
-    output_pdf_path = os.path.join("Information", f"{sem_input}.pdf")
+    output_pdf_path = os.path.join("Information", "Saved Results", f"{sem_input}.pdf")
     
     writer = PdfWriter()
     
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     driver_path = ChromeDriverManager().install()
 
     # Read Excel
-    file_path = "Information/Math Group Student Info.xlsx"
+    file_path = os.path.join("Information", "Input Info", "Math Group Student Info.xlsx")
     if not os.path.exists(file_path):
         print(f"❌ Could not find {file_path}")
         exit(1)

@@ -116,3 +116,6 @@ DDU-Result-Finder/
 
 This codebase is specifically intended for educational purposes and internal automation use only. Make sure you have the proper authorization to process or retrieve the results using automated scripts and ensure you are not violating the terms of service of the target result portal.
 
+## AI Credits
+
+This whole project is vibecoded using AIs like ChatGPT, Claude, Gemini by Vaibhav. Also Vaibhav (me) have done minor edits.

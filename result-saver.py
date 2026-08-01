@@ -19,7 +19,9 @@ def process_semester(sem_input, df, driver_path, position):
     
     # Create directory to save PDFs for the specific semester
     output_folder = os.path.join("Information", "Saved Results", f"Saved_PDFs_Sem_{sem_input}")
+    chrome_junk_folder = os.path.join(output_folder, "chrome_junk")
     os.makedirs(output_folder, exist_ok=True)
+    os.makedirs(chrome_junk_folder, exist_ok=True)
     
     # Setup Chrome for automatic PDF saving
     options = webdriver.ChromeOptions()
@@ -50,7 +52,7 @@ def process_semester(sem_input, df, driver_path, position):
 
     prefs = {
         'printing.print_preview_sticky_settings.appState': json.dumps(settings),
-        'savefile.default_directory': os.path.abspath(output_folder),
+        'savefile.default_directory': os.path.abspath(chrome_junk_folder),
         'profile.default_content_settings.popups': 0,
         'download.prompt_for_download': False,
         'download.directory_upgrade': True
@@ -161,10 +163,11 @@ def process_semester(sem_input, df, driver_path, position):
                     # Trigger Save as PDF directly using Chrome DevTools Protocol
                     pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
                         "printBackground": True,
-                        "preferCSSPageSize": True
+                        "preferCSSPageSize": True,
+                        "pageRanges": "1"
                     })
             
-                    new_filename = f"{roll_suffix}.pdf"
+                    new_filename = f"{roll_no}.pdf"
                     new_filepath = os.path.join(output_folder, new_filename)
             
                     with open(new_filepath, "wb") as f:

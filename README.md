@@ -118,4 +118,4 @@ This codebase is specifically intended for educational purposes and internal aut
 
 ## AI Credits
 
-This whole project is vibecoded using AIs like ChatGPT, Claude, Gemini by Vaibhav. Also Vaibhav (me) have done minor edits.
+This whole project is vibecoded using AIs like ChatGPT, Claude, Gemini & Antigravity IDE by me (Vaibhav). I have also done minor edits wherever neccessary.

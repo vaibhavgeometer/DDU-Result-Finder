@@ -11,7 +11,6 @@ import re
 
 # Constants
 OUTPUT_DIR = os.path.join("Information", "Saved DOBs")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def extract_form_data(html):
     viewstate = re.search(r'id="__VIEWSTATE" value="([^"]+)"', html)
@@ -81,7 +80,7 @@ async def try_dob(session, roll_no, semester, date_of_birth, semaphore):
             return None
     return None
 
-async def fetch_for_roll(session, roll_no, semester, priority_groups, month_filter, semaphore, results, results_lock, roll_pbar, filename):
+async def fetch_for_roll(session, roll_no, semester, priority_groups, month_filter, semaphore, results, results_lock, roll_pbar, filename=None, save_to_excel=True):
     roll_str = str(roll_no).zfill(6)
 
     for years in priority_groups:
@@ -96,19 +95,23 @@ async def fetch_for_roll(session, roll_no, semester, priority_groups, month_filt
                 if result:
                     async with results_lock:
                         results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': result})
-                        try:
-                            pd.DataFrame(results).to_excel(filename, index=False)
-                        except PermissionError:
-                            pass # Will be saved later
+                        if save_to_excel and filename:
+                            try:
+                                pd.DataFrame(results).to_excel(filename, index=False)
+                            except PermissionError:
+                                pass # Will be saved later
+                    tqdm.write(f"🎉 Found DOB for Roll No {roll_str}: {result}")
                     roll_pbar.update(1)
                     return
     # If not found
     async with results_lock:
         results.append({'Roll Number': roll_no, 'Semester': semester, 'Date of Birth': "N.A."})
-        try:
-            pd.DataFrame(results).to_excel(filename, index=False)
-        except PermissionError:
-            pass
+        if save_to_excel and filename:
+            try:
+                pd.DataFrame(results).to_excel(filename, index=False)
+            except PermissionError:
+                pass
+    tqdm.write(f"❌ DOB not found for Roll No {roll_str}")
     roll_pbar.update(1)
     return None
 
@@ -124,9 +127,9 @@ async def check_website_status(session, url):
     except Exception as e:
         return False, str(e)
 
-async def run_custom_roll_search(roll_numbers, semester, month_filter):
+async def run_custom_roll_search(roll_numbers, semester, month_filter, save_to_excel=True):
     priority_groups = [[2003,2004,2005,2006,2007,2008],[1999,2000,2001,2002,2009,2010],[1996,1997,1998,2011,2012,2013]]
-    filename = os.path.join(OUTPUT_DIR, f"ddu_custom_results.xlsx")
+    filename = os.path.join(OUTPUT_DIR, "ddu_custom_results.xlsx") if save_to_excel else None
     url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
 
     connector = aiohttp.TCPConnector(limit=100)
@@ -138,55 +141,77 @@ async def run_custom_roll_search(roll_numbers, semester, month_filter):
             print("Please try again later.")
             return
 
-        if os.path.exists(filename):
+        if save_to_excel and filename and os.path.exists(filename):
             existing_df = pd.read_excel(filename)
             completed_rolls = set(existing_df["Roll Number"].astype(int))
             print(f"🔁 Resuming... {len(completed_rolls)} already done.")
+            remaining_rolls = [rn for rn in roll_numbers if rn not in completed_rolls]
+            results = existing_df.to_dict(orient="records")
         else:
-            existing_df = pd.DataFrame()
-            completed_rolls = set()
+            remaining_rolls = list(roll_numbers)
+            results = []
 
-        remaining_rolls = [rn for rn in roll_numbers if rn not in completed_rolls]
-        results = existing_df.to_dict(orient="records")
-        results_lock = asyncio.Lock()
-        semaphore = asyncio.Semaphore(50)
+        if not remaining_rolls:
+            print("✨ All entered roll numbers have already been processed.")
+        else:
+            results_lock = asyncio.Lock()
+            semaphore = asyncio.Semaphore(50)
 
-        with tqdm(total=len(remaining_rolls), desc="📦 Roll Numbers Done", position=0, dynamic_ncols=True) as roll_pbar:
-            tasks = [
-                fetch_for_roll(session, rn, semester, priority_groups, month_filter, semaphore, results, results_lock, roll_pbar, filename)
-                for rn in remaining_rolls
-            ]
-            task_results = await asyncio.gather(*tasks)
-            
-            if "DOWN" in task_results:
-                print(f"\n🛑 The website went down during the search. Some results might be missing.")
-                print("Please try again later.")
+            with tqdm(total=len(remaining_rolls), desc="📦 Roll Numbers Done", position=0, dynamic_ncols=True) as roll_pbar:
+                tasks = [
+                    fetch_for_roll(session, rn, semester, priority_groups, month_filter, semaphore, results, results_lock, roll_pbar, filename, save_to_excel)
+                    for rn in remaining_rolls
+                ]
+                task_results = await asyncio.gather(*tasks)
+                
+                if "DOWN" in task_results:
+                    print(f"\n🛑 The website went down during the search. Some results might be missing.")
+                    print("Please try again later.")
 
-    while True:
-        if not results:
-            break
-        try:
-            pd.DataFrame(results).to_excel(filename, index=False)
-            break
-        except PermissionError:
-            print(f"\n⚠️ Please close {filename} to save final results. Retrying in 5 seconds...")
-            await asyncio.sleep(5)
+    # Save to Excel if requested
+    if save_to_excel and filename and results:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        while True:
+            try:
+                pd.DataFrame(results).to_excel(filename, index=False)
+                break
+            except PermissionError:
+                print(f"\n⚠️ Please close {filename} to save final results. Retrying in 5 seconds...")
+                await asyncio.sleep(5)
+        print(f"\n✅ Results saved to: {filename}")
 
-    print(f"\n✅ Results saved to: {filename}")
+    # Display results table in terminal
+    filtered_results = [r for r in results if r['Roll Number'] in roll_numbers]
+    if filtered_results:
+        print("\n📋 Search Results:")
+        print("=" * 45)
+        print(f"{'Roll Number':<15} {'Semester':<10} {'Date of Birth':<15}")
+        print("-" * 45)
+        for r in filtered_results:
+            print(f"{r['Roll Number']:<15} {r['Semester']:<10} {r['Date of Birth']:<15}")
+        print("=" * 45)
+    else:
+        print("\nℹ️ No results to display.")
 
 def run_custom_main():
     print("🎯 Custom Roll Search | DDU DOB Finder")
     try:
         roll_input = input("Enter Roll Numbers (comma separated): ").strip()
-        roll_numbers = list(map(int, roll_input.split(',')))
+        if not roll_input:
+            print("❌ No roll numbers provided.")
+            return
+        roll_numbers = list(map(int, [r.strip() for r in roll_input.split(',') if r.strip()]))
         semester = input("Enter Semester (1-8): ").strip()
         month = input("Enter specific month to search (1-12 or blank for all months): ").strip()
         month_filter = int(month) if month.isdigit() and 1 <= int(month) <= 12 else None
-        asyncio.run(run_custom_roll_search(roll_numbers, semester, month_filter))
+        
+        save_choice = input("Do you want to save DOB in Excel file or just view in terminal? (1: Save to Excel, 2: View in terminal) [default: 1]: ").strip().lower()
+        save_to_excel = save_choice not in ['2', 'view', 'v', 'terminal', 'n', 'no']
+
+        asyncio.run(run_custom_roll_search(roll_numbers, semester, month_filter, save_to_excel))
     except Exception as e:
         print(f"❌ Error: {e}")
 
 # 🚀 Launch
-run_custom_main()
-
-#2515075160
+if __name__ == "__main__":
+    run_custom_main()

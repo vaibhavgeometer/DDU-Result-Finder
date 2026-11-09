@@ -34,8 +34,8 @@ If you don't know the dates of birth for the students, run the `dob-finder.py` s
   python dob-finder.py
   ```
 
-You will be prompted to enter the Roll Numbers (comma-separated), Semester, and optionally a specific month to speed up the search.
-_Note: The results from this script will be saved locally inside the `Information/Saved DOBs/ddu_custom_results.xlsx` file._
+You will be prompted to enter the Roll Numbers (comma-separated), Semester, optionally a specific month to speed up the search, and whether to save the results to an Excel file or view them directly in the terminal.
+_Note: If saving to Excel is selected, results will be stored inside the `Information/Saved DOBs/ddu_custom_results.xlsx` file._
 
 ### 2. Prepare the Input File for Result Saver
 

@@ -39,20 +39,23 @@ _Note: If saving to Excel is selected, results will be stored inside the `Inform
 
 ### 2. Prepare the Input File for Result Saver
 
-Before you can automate the PDF downloading, `result-saver.py` expects a specific file containing your students' Roll Numbers and DOBs.
+Before automating PDF downloading, place your Excel files containing student Roll Numbers and DOBs in `Information/Input Info/` (or use the output saved in `Information/Saved DOBs/`).
 
-- Create or place an Excel file named `Math Group Student Info.xlsx` inside the `Information/Input Info/` directory.
-- Ensure the Excel file contains columns named `Roll Number` and `Date of Birth` for all target students.
+- The script automatically detects eligible `.xlsx` / `.xls` files in either `Information/Input Info/` or `Information/Saved DOBs/`.
+- Ensure the Excel file contains columns for Roll Numbers (e.g., `Roll Number`, `roll_no`) and Dates of Birth (e.g., `Date of Birth`, `dob`).
 
 ### 3. Save Results as PDF
 
-Run the `result-saver.py` script to automate downloading results for the target students.
+Run the `result-saver.py` script to automate downloading results for the target students:
 
   ```bash
   python result-saver.py
   ```
 
-The script will ask which semesters to download (e.g., `1, 2, 3`). It will launch hidden Chrome instances simultaneously to fetch and download individual PDFs, and then merge them into a single PDF per semester file located at `Information/Saved Results/1.pdf`, `2.pdf`, etc.
+1. The script verifies that the `Information/` directory and either `Input Info/` or `Saved DOBs/` exist.
+2. It detects and lists all eligible Excel files, prompting you to choose which file to use.
+3. Next, it prompts for the semester(s) to download (e.g., `1, 2, 3`).
+4. It launches hidden Chrome instances simultaneously to fetch and download individual PDFs, and merges them into a single PDF per semester file located at `Information/Saved Results/1.pdf`, `2.pdf`, etc.
 
 ## Directory Structure Overview
 

@@ -14,6 +14,69 @@ from webdriver_manager.chrome import ChromeDriverManager
 from pypdf import PdfReader, PdfWriter
 import requests
 
+def find_eligible_excel_files(base_dirs):
+    eligible = []
+    roll_patterns = ["roll number", "roll no", "rollno", "roll_no", "roll_number", "roll"]
+    dob_patterns = ["date of birth", "dob", "date_of_birth", "birth date", "birthdate"]
+    
+    for dir_path in base_dirs:
+        if not os.path.exists(dir_path):
+            continue
+            
+        for file_name in os.listdir(dir_path):
+            if file_name.startswith("~$") or not file_name.lower().endswith((".xlsx", ".xls")):
+                continue
+                
+            full_path = os.path.join(dir_path, file_name)
+            try:
+                sample_df = pd.read_excel(full_path, nrows=2)
+                roll_col = None
+                dob_col = None
+                
+                # Check exact or normalized matches first
+                for col in sample_df.columns:
+                    col_norm = str(col).strip().lower().replace("_", " ").replace("-", " ")
+                    if not roll_col:
+                        for pattern in roll_patterns:
+                            if col_norm == pattern:
+                                roll_col = col
+                                break
+                    if not dob_col:
+                        for pattern in dob_patterns:
+                            if col_norm == pattern:
+                                dob_col = col
+                                break
+                
+                # Fallback to substring matching if needed
+                if not roll_col:
+                    for col in sample_df.columns:
+                        col_norm = str(col).strip().lower().replace("_", " ")
+                        if "roll" in col_norm:
+                            roll_col = col
+                            break
+                            
+                if not dob_col:
+                    for col in sample_df.columns:
+                        col_norm = str(col).strip().lower().replace("_", " ")
+                        if "dob" in col_norm or "birth" in col_norm:
+                            dob_col = col
+                            break
+                            
+                if roll_col and dob_col:
+                    rel_dir = os.path.basename(dir_path)
+                    eligible.append({
+                        "file_name": file_name,
+                        "display_name": f"[{rel_dir}] {file_name}",
+                        "full_path": full_path,
+                        "roll_col": roll_col,
+                        "dob_col": dob_col,
+                        "folder": rel_dir
+                    })
+            except Exception:
+                continue
+                
+    return eligible
+
 def process_semester(sem_input, df, driver_path, position):
     target_semester = "Semester " + sem_input
     
@@ -79,8 +142,14 @@ def process_semester(sem_input, df, driver_path, position):
         
         # Loop through students
         for index, row in df.iterrows():
-            roll_no = str(row['Roll Number']).zfill(6)
-            roll_suffix = roll_no[-3:]  # Last three digits
+            raw_roll = row['Roll Number']
+            if pd.isna(raw_roll):
+                pbar.update(1)
+                continue
+            if isinstance(raw_roll, float):
+                roll_no = str(int(raw_roll)).zfill(6)
+            else:
+                roll_no = str(raw_roll).split('.')[0].strip().zfill(6)
             dob = row['Date of Birth']
         
             # Skip if no DOB
@@ -97,7 +166,7 @@ def process_semester(sem_input, df, driver_path, position):
                     dob_str = dob_obj.strftime('%d-%m-%Y')
                 except:
                     dob_str = str(dob)
-                    
+            
             for attempt in range(3):
                 skip = False
                 try:
@@ -247,29 +316,81 @@ def process_semester(sem_input, df, driver_path, position):
             pass
 
 if __name__ == "__main__":
+    info_dir = "Information"
+    if not os.path.exists(info_dir) or not os.path.isdir(info_dir):
+        print(f"❌ Error: Folder '{info_dir}' does not exist! Please create it and add your input files.")
+        exit(1)
+
+    input_info_dir = os.path.join(info_dir, "Input Info")
+    saved_dobs_dir = os.path.join(info_dir, "Saved DOBs")
+
+    check_dirs = []
+    if os.path.isdir(input_info_dir):
+        check_dirs.append(input_info_dir)
+    if os.path.isdir(saved_dobs_dir):
+        check_dirs.append(saved_dobs_dir)
+
+    if not check_dirs:
+        print(f"❌ Error: Neither '{input_info_dir}' nor '{saved_dobs_dir}' exists!")
+        print("Please create at least one of these folders and place your Excel file(s) there.")
+        exit(1)
+
+    print("🔍 Searching for eligible Excel files in 'Input Info' and 'Saved DOBs'...")
+    eligible_files = find_eligible_excel_files(check_dirs)
+    if not eligible_files:
+        print("❌ Error: No eligible Excel files found.")
+        print("Excel files must contain columns for Roll Number (e.g. 'Roll Number', 'roll_no') and Date of Birth (e.g. 'Date of Birth', 'dob').")
+        exit(1)
+
+    if len(eligible_files) == 1:
+        print(f"\n📄 Found 1 eligible Excel file:")
+        print(f"  1. {eligible_files[0]['display_name']}")
+        choice_input = input("Use this file? (Y/n) [default: y]: ").strip().lower()
+        if choice_input in ['n', 'no']:
+            print("Operation cancelled.")
+            exit(0)
+        selected_file = eligible_files[0]
+    else:
+        print(f"\n📁 Available eligible Excel files:")
+        for idx, file_info in enumerate(eligible_files, 1):
+            print(f"  {idx}. {file_info['display_name']}")
+
+        while True:
+            choice_input = input(f"\nSelect a file to use (1-{len(eligible_files)}) [default: 1]: ").strip()
+            if not choice_input:
+                selected_file = eligible_files[0]
+                break
+            if choice_input.isdigit() and 1 <= int(choice_input) <= len(eligible_files):
+                selected_file = eligible_files[int(choice_input) - 1]
+                break
+            print(f"❌ Invalid selection. Please enter a number between 1 and {len(eligible_files)}.")
+
+    print(f"\n📖 Loading '{selected_file['display_name']}'...")
+    df = pd.read_excel(selected_file['full_path'])
+    # Standardize column names to 'Roll Number' and 'Date of Birth'
+    df = df.rename(columns={
+        selected_file['roll_col']: 'Roll Number',
+        selected_file['dob_col']: 'Date of Birth'
+    })
+
+    # Filter out empty roll rows
+    df = df.dropna(subset=['Roll Number'])
+    print(f"✅ Loaded {len(df)} student records.")
+
     # Ask for semester input
-    target_semesters_input = input("Enter the semesters separated by commas (e.g. 1, 2, 3): ").strip()
+    target_semesters_input = input("\nEnter the semesters separated by commas (e.g. 1, 2, 3): ").strip()
     if not target_semesters_input:
         print("❌ No semesters provided!")
         exit(1)
-        
-    target_semester_list = [sem.strip() for sem in target_semesters_input.split(',')]
-    
-    # Install driver once to avoid caching conflicts when starting multiple drivers concurrently
-    print("🔄 Ensuring latest ChromeDriver is installed...")
-    driver_path = ChromeDriverManager().install()
 
-    # Read Excel
-    file_path = os.path.join("Information", "Input Info", "Math Group Student Info.xlsx")
-    if not os.path.exists(file_path):
-        print(f"❌ Could not find {file_path}")
+    target_semester_list = [sem.strip() for sem in target_semesters_input.split(',') if sem.strip()]
+    if not target_semester_list:
+        print("❌ No valid semesters provided!")
         exit(1)
-        
-    df = pd.read_excel(file_path)
-    url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
 
     # Check website status
-    print("🔍 Checking website status...")
+    url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
+    print("\n🔍 Checking website status...")
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 503:
@@ -285,6 +406,13 @@ if __name__ == "__main__":
         print(f"🛑 Error connecting to website: {e}")
         print("Please check your internet connection and try again.")
         exit(1)
+
+    # Install driver once to avoid caching conflicts when starting multiple drivers concurrently
+    print("🔄 Ensuring latest ChromeDriver is installed...")
+    driver_path = ChromeDriverManager().install()
+
+    # Ensure Saved Results directory exists
+    os.makedirs(os.path.join(info_dir, "Saved Results"), exist_ok=True)
 
     # Use ThreadPoolExecutor to run tasks simultaneously
     print(f"🚀 Launching {len(target_semester_list)} simultaneous browser sessions...\n")

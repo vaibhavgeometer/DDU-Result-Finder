@@ -60,13 +60,9 @@ Finding a student's unknown DOB brute-force across thousands of calendar days wo
 
 Once you have roll numbers and DOBs, `result-saver.py` automates the entire download and compilation pipeline:
 
-- **Dynamic Folder & Excel File Discovery**:
-  On startup, the script verifies that the `Information/` directory and at least one source folder (`Input Info/` or `Saved DOBs/`) exist. It scans for `.xlsx` and `.xls` files, inspecting the headers of each file.
-- **Flexible Column Recognition**:
-  You do not need to rename your columns to an exact string. The script automatically detects and standardizes common column naming conventions:
-  - **Roll Number**: `Roll Number`, `roll_no`, `Roll No`, `rollno`, `roll`, etc.
-  - **Date of Birth**: `Date of Birth`, `dob`, `date_of_birth`, `birth date`, etc.
-  If multiple eligible files are found, it presents an interactive selection menu.
+- **Dual Input Modes (Excel Sheets or Direct Manual Entry)**:
+  - **Load from Excel**: Scans `Information/Input Info/` and `Information/Saved DOBs/` for eligible `.xlsx` / `.xls` spreadsheets, automatically recognizing headers like `Roll Number`, `roll_no`, `Date of Birth`, `dob`, etc.
+  - **Manual Entry**: Allows typing roll numbers, DOBs, and target semesters directly without creating or modifying any Excel files (with an optional prompt to persist the entered students to Excel for future runs).
 - **Automated ChromeDriver Management**:
   Uses `webdriver-manager` to ensure the correct ChromeDriver matching your installed Google Chrome version is downloaded and configured before starting browser sessions, avoiding thread race conditions.
 - **Parallel Multi-Semester Processing (`ThreadPoolExecutor`)**:
@@ -141,6 +137,25 @@ Next, proceed to [Workflow B](#workflow-b-when-you-already-have-an-excel-sheet-w
 4. **Collect Merged PDFs**:
    - The script will launch Chrome browser sessions, download the results, and merge them.
    - Find your final merged PDFs inside `Information/Saved Results/` named `1.pdf`, `2.pdf`, etc.
+
+---
+
+### Workflow C: Quick Manual Result Download (No Excel File Needed)
+
+If you only want to download results for one or a few students without preparing an Excel sheet:
+
+1. **Run the Result Saver**:
+   ```bash
+   python result-saver.py
+   ```
+2. **Choose Manual Mode**:
+   - At the initial prompt, select option **`2`** (*Enter details manually*).
+   - Enter student Roll Number(s) and Date(s) of Birth (supports single entry, comma-separated lists, or interactive step-by-step entry).
+   - *(Optional)* Choose whether to save the entered student data into `Information/Input Info/Manual_Students.xlsx` for future use.
+3. **Enter Semesters**:
+   - Enter the target semester(s) (e.g., `1` or `1, 2`).
+4. **Collect Merged PDFs**:
+   - Results are automatically fetched, rendered as PDF via Chrome DevTools Protocol, and merged into `Information/Saved Results/<semester>.pdf`.
 
 ---
 

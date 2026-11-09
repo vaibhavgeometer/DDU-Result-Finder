@@ -149,6 +149,73 @@ def find_eligible_excel_files(base_dirs):
                 
     return eligible
 
+def get_manual_students():
+    print(f"\n{UI.CYAN}{UI.BOLD}📝 Manual Student Entry{UI.RESET}")
+    print(f"  {UI.GRAY}Enter single or comma-separated details, or add students one-by-one.{UI.RESET}")
+    UI.divider()
+    
+    print(f"  {UI.WHITE}Entry style:{UI.RESET}")
+    print(f"    {UI.WHITE}1.{UI.RESET} Quick Entry {UI.GRAY}(single student or comma-separated lists){UI.RESET} {UI.GRAY}[default]{UI.RESET}")
+    print(f"    {UI.WHITE}2.{UI.RESET} Step-by-Step {UI.GRAY}(one student at a time){UI.RESET}")
+    entry_choice = input(f"    {UI.YELLOW}Select style [1/2, default: 1]{UI.RESET}: ").strip()
+    
+    students = []
+    
+    if entry_choice == "2":
+        count = 1
+        while True:
+            roll = input(f"\n  {UI.WHITE}Student #{count}{UI.RESET} Roll Number {UI.GRAY}(or press Enter to finish){UI.RESET}: ").strip()
+            if not roll:
+                if students:
+                    break
+                UI.error("You must enter at least one student.")
+                continue
+            while True:
+                dob = input(f"  {UI.WHITE}Student #{count}{UI.RESET} Date of Birth {UI.GRAY}(DD-MM-YYYY or YYYY-MM-DD){UI.RESET}: ").strip()
+                if dob:
+                    break
+                UI.error("Date of Birth cannot be empty.")
+            students.append({'Roll Number': roll, 'Date of Birth': dob})
+            count += 1
+    else:
+        while True:
+            roll_input = input(f"\n  {UI.WHITE}{UI.BOLD}➤ Enter Roll Number(s){UI.RESET} {UI.GRAY}(comma-separated){UI.RESET}: ").strip()
+            if roll_input:
+                break
+            UI.error("Roll number cannot be empty.")
+            
+        rolls = [r.strip() for r in roll_input.split(',') if r.strip()]
+        
+        while True:
+            if len(rolls) > 1:
+                prompt_msg = f"  {UI.WHITE}{UI.BOLD}➤ Enter Date(s) of Birth{UI.RESET} {UI.GRAY}(comma-separated, or single DOB for all){UI.RESET}: "
+            else:
+                prompt_msg = f"  {UI.WHITE}{UI.BOLD}➤ Enter Date of Birth{UI.RESET} {UI.GRAY}(DD-MM-YYYY or YYYY-MM-DD){UI.RESET}: "
+            dob_input = input(prompt_msg).strip()
+            if not dob_input:
+                UI.error("Date of Birth cannot be empty.")
+                continue
+                
+            if len(rolls) > 1:
+                if ',' in dob_input:
+                    dobs = [d.strip() for d in dob_input.split(',') if d.strip()]
+                    if len(dobs) != len(rolls):
+                        UI.error(f"Count mismatch: You entered {len(rolls)} roll numbers but {len(dobs)} DOBs.")
+                        continue
+                    for r, d in zip(rolls, dobs):
+                        students.append({'Roll Number': r, 'Date of Birth': d})
+                    break
+                else:
+                    for r in rolls:
+                        students.append({'Roll Number': r, 'Date of Birth': dob_input})
+                    break
+            else:
+                students.append({'Roll Number': rolls[0], 'Date of Birth': dob_input})
+                break
+
+    df = pd.DataFrame(students)
+    return df
+
 def process_semester(sem_input, df, driver_path, position):
     target_semester = "Semester " + sem_input
     
@@ -395,11 +462,6 @@ if __name__ == "__main__":
     )
 
     info_dir = "Information"
-    if not os.path.exists(info_dir) or not os.path.isdir(info_dir):
-        UI.error(f"Folder '{info_dir}' does not exist!")
-        print(f"  {UI.GRAY}Please create an 'Information' folder containing your input files.{UI.RESET}\n")
-        exit(1)
-
     input_info_dir = os.path.join(info_dir, "Input Info")
     saved_dobs_dir = os.path.join(info_dir, "Saved DOBs")
 
@@ -409,50 +471,78 @@ if __name__ == "__main__":
     if os.path.isdir(saved_dobs_dir):
         check_dirs.append(saved_dobs_dir)
 
-    if not check_dirs:
-        UI.error(f"Neither '{input_info_dir}' nor '{saved_dobs_dir}' was found!")
-        print(f"  {UI.GRAY}Please create at least one folder and place your student Excel sheet there.{UI.RESET}\n")
-        exit(1)
+    eligible_files = find_eligible_excel_files(check_dirs) if check_dirs else []
 
-    eligible_files = find_eligible_excel_files(check_dirs)
-    if not eligible_files:
-        UI.error("No eligible Excel files found.")
-        print(f"  {UI.GRAY}Files must contain Roll Number ('Roll Number', 'roll_no') and Date of Birth ('Date of Birth', 'dob') columns.{UI.RESET}\n")
-        exit(1)
-
-    # File Selection Menu
-    print(f"{UI.CYAN}{UI.BOLD}📁 Available Student Data Sheets{UI.RESET}")
+    # Select Input Mode
+    print(f"{UI.CYAN}{UI.BOLD}📋 Select Input Method{UI.RESET}")
     UI.divider()
-    for idx, file_info in enumerate(eligible_files, 1):
-        tag = f"[{file_info['folder']}]"
-        print(f"  {UI.WHITE}{UI.BOLD}[{idx}]{UI.RESET} {UI.CYAN}{tag:<14}{UI.RESET} {file_info['file_name']}")
+    print(f"  {UI.WHITE}1.{UI.RESET} Load from Excel file {UI.GRAY}(scans Input Info & Saved DOBs){UI.RESET} {UI.GRAY}[default]{UI.RESET}")
+    print(f"  {UI.WHITE}2.{UI.RESET} Enter manually {UI.GRAY}(Roll Numbers, DOBs & Semesters){UI.RESET}")
     UI.divider()
+    
+    mode_choice = input(f"  {UI.YELLOW}Choose option [1/2, default: 1]{UI.RESET}: ").strip()
 
-    if len(eligible_files) == 1:
-        choice_input = input(f"  {UI.YELLOW}Use this file? (Y/n) [default: y]{UI.RESET}: ").strip().lower()
-        if choice_input in ['n', 'no']:
-            print(f"\n  {UI.YELLOW}▲ Operation cancelled by user.{UI.RESET}\n")
-            exit(0)
-        selected_file = eligible_files[0]
+    df = None
+    source_label = ""
+
+    if mode_choice == "2":
+        # Manual Input Mode
+        df = get_manual_students()
+        source_label = f"Manual Input ({len(df)} records)"
+        UI.success(f"Configured {UI.BOLD}{len(df)}{UI.RESET} student record(s) manually.")
+        
+        # Option to save manually entered students to Excel
+        save_opt = input(f"\n  {UI.YELLOW}Save these students to Excel for future use? (y/N) [default: n]{UI.RESET}: ").strip().lower()
+        if save_opt in ['y', 'yes']:
+            os.makedirs(input_info_dir, exist_ok=True)
+            manual_file_path = os.path.join(input_info_dir, "Manual_Students.xlsx")
+            df.to_excel(manual_file_path, index=False)
+            UI.success(f"Saved student sheet to: {UI.BOLD}{manual_file_path}{UI.RESET}")
     else:
-        while True:
-            choice_input = input(f"  {UI.YELLOW}Select a file to use [1-{len(eligible_files)}, default: 1]{UI.RESET}: ").strip()
-            if not choice_input:
-                selected_file = eligible_files[0]
-                break
-            if choice_input.isdigit() and 1 <= int(choice_input) <= len(eligible_files):
-                selected_file = eligible_files[int(choice_input) - 1]
-                break
-            UI.error(f"Invalid selection. Please enter a number between 1 and {len(eligible_files)}.")
+        # Excel File Mode
+        if not eligible_files:
+            UI.warn("No eligible Excel files found in 'Information/Input Info' or 'Information/Saved DOBs'.")
+            switch_manual = input(f"  {UI.YELLOW}Would you like to enter student details manually instead? (Y/n) [default: y]{UI.RESET}: ").strip().lower()
+            if switch_manual in ['n', 'no']:
+                print(f"\n  {UI.YELLOW}▲ Operation cancelled.{UI.RESET}\n")
+                exit(0)
+            df = get_manual_students()
+            source_label = f"Manual Input ({len(df)} records)"
+            UI.success(f"Configured {UI.BOLD}{len(df)}{UI.RESET} student record(s) manually.")
+        else:
+            # File Selection Menu
+            print(f"\n{UI.CYAN}{UI.BOLD}📁 Available Student Data Sheets{UI.RESET}")
+            UI.divider()
+            for idx, file_info in enumerate(eligible_files, 1):
+                tag = f"[{file_info['folder']}]"
+                print(f"  {UI.WHITE}{UI.BOLD}[{idx}]{UI.RESET} {UI.CYAN}{tag:<14}{UI.RESET} {file_info['file_name']}")
+            UI.divider()
 
-    print()
-    df = pd.read_excel(selected_file['full_path'])
-    df = df.rename(columns={
-        selected_file['roll_col']: 'Roll Number',
-        selected_file['dob_col']: 'Date of Birth'
-    })
-    df = df.dropna(subset=['Roll Number'])
-    UI.success(f"Loaded {UI.BOLD}{len(df)}{UI.RESET} student records from {UI.CYAN}{selected_file['display_name']}{UI.RESET}")
+            if len(eligible_files) == 1:
+                choice_input = input(f"  {UI.YELLOW}Use this file? (Y/n) [default: y]{UI.RESET}: ").strip().lower()
+                if choice_input in ['n', 'no']:
+                    print(f"\n  {UI.YELLOW}▲ Operation cancelled by user.{UI.RESET}\n")
+                    exit(0)
+                selected_file = eligible_files[0]
+            else:
+                while True:
+                    choice_input = input(f"  {UI.YELLOW}Select a file to use [1-{len(eligible_files)}, default: 1]{UI.RESET}: ").strip()
+                    if not choice_input:
+                        selected_file = eligible_files[0]
+                        break
+                    if choice_input.isdigit() and 1 <= int(choice_input) <= len(eligible_files):
+                        selected_file = eligible_files[int(choice_input) - 1]
+                        break
+                    UI.error(f"Invalid selection. Please enter a number between 1 and {len(eligible_files)}.")
+
+            df = pd.read_excel(selected_file['full_path'])
+            df = df.rename(columns={
+                selected_file['roll_col']: 'Roll Number',
+                selected_file['dob_col']: 'Date of Birth'
+            })
+            df = df.dropna(subset=['Roll Number'])
+            source_label = selected_file['display_name']
+            UI.success(f"Loaded {UI.BOLD}{len(df)}{UI.RESET} student records from {UI.CYAN}{selected_file['display_name']}{UI.RESET}")
 
     # Semester Input
     while True:
@@ -466,7 +556,7 @@ if __name__ == "__main__":
     print()
     # Configuration Card
     job_items = [
-        ("Source Sheet", selected_file['full_path']),
+        ("Source", source_label),
         ("Total Students", str(len(df))),
         ("Target Semesters", ", ".join(f"Semester {s}" for s in target_semester_list)),
         ("Destination", os.path.join(info_dir, "Saved Results"))

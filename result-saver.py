@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import json
 import shutil
@@ -13,6 +14,77 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from pypdf import PdfReader, PdfWriter
 import requests
+import re
+import unicodedata
+
+# Enable ANSI escape sequences on Windows console
+os.system('')
+
+class UI:
+    RESET   = "\033[0m"
+    BOLD    = "\033[1m"
+    DIM     = "\033[2m"
+    CYAN    = "\033[96m"
+    GREEN   = "\033[92m"
+    YELLOW  = "\033[93m"
+    RED     = "\033[91m"
+    BLUE    = "\033[94m"
+    WHITE   = "\033[97m"
+    GRAY    = "\033[90m"
+
+    @staticmethod
+    def display_len(s):
+        clean = re.sub(r'\033\[[0-9;]*m', '', str(s))
+        return sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in clean)
+
+    @staticmethod
+    def pad_visible(s, target_len):
+        extra = len(str(s)) - UI.display_len(s)
+        return f"{str(s):<{target_len + extra}}"
+
+    @staticmethod
+    def banner(title, subtitle=""):
+        width = 66
+        inner = width - 2
+        print(f"\n{UI.CYAN}{UI.BOLD}┌{'─' * inner}┐{UI.RESET}")
+        title_str = f"  {title}"
+        pad1 = inner - UI.display_len(title_str)
+        print(f"{UI.CYAN}{UI.BOLD}│{UI.RESET}{UI.YELLOW}{UI.BOLD}{title_str}{' ' * max(0, pad1)}{UI.CYAN}{UI.BOLD}│{UI.RESET}")
+        if subtitle:
+            sub_str = f"  {subtitle}"
+            pad2 = inner - UI.display_len(sub_str)
+            print(f"{UI.CYAN}{UI.BOLD}│{UI.RESET}{UI.GRAY}{sub_str}{' ' * max(0, pad2)}{UI.CYAN}{UI.BOLD}│{UI.RESET}")
+        print(f"{UI.CYAN}{UI.BOLD}└{'─' * inner}┘{UI.RESET}\n")
+
+    @staticmethod
+    def divider(width=66):
+        print(f"{UI.GRAY}{'─' * width}{UI.RESET}")
+
+    @staticmethod
+    def card(title, items, width=66):
+        print(f"{UI.CYAN}{UI.BOLD}📋 {title}{UI.RESET}")
+        UI.divider(width)
+        for label, val in items:
+            lbl_str = f"  • {label:<18}: "
+            print(f"{UI.GRAY}{lbl_str}{UI.WHITE}{val}{UI.RESET}")
+        UI.divider(width)
+        print()
+
+    @staticmethod
+    def success(msg):
+        print(f"  {UI.GREEN}✔ {msg}{UI.RESET}")
+
+    @staticmethod
+    def error(msg):
+        print(f"  {UI.RED}✖ {msg}{UI.RESET}")
+
+    @staticmethod
+    def warn(msg):
+        print(f"  {UI.YELLOW}▲ {msg}{UI.RESET}")
+
+    @staticmethod
+    def info(msg):
+        print(f"  {UI.BLUE}ℹ {msg}{UI.RESET}")
 
 def find_eligible_excel_files(base_dirs):
     eligible = []
@@ -138,7 +210,8 @@ def process_semester(sem_input, df, driver_path, position):
         time.sleep(2)
         
         # Setup progress bar
-        pbar = tqdm(total=len(df), desc=f"Semester {sem_input}", position=position, leave=True)
+        bar_format = f"  {UI.CYAN}{UI.BOLD}{{desc:<16}}{UI.RESET} {{percentage:3.0f}}%|{{bar:25}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}{{elapsed}}<{{remaining}}{UI.RESET}]"
+        pbar = tqdm(total=len(df), desc=f"Semester {sem_input}", position=position, leave=True, bar_format=bar_format)
         
         # Loop through students
         for index, row in df.iterrows():
@@ -266,15 +339,15 @@ def process_semester(sem_input, df, driver_path, position):
                         time.sleep(2)
                     else:
                         error_name = type(e).__name__
-                        tqdm.write(f"❌ [{target_semester}] Failed Roll No: {roll_no} after 3 attempts ({error_name})")
+                        tqdm.write(f"  {UI.RED}✖ [{target_semester}] Failed Roll No: {roll_no} after 3 attempts ({error_name}){UI.RESET}")
                 
             pbar.update(1)
                 
         pbar.close()
-        tqdm.write(f"🎉 [{target_semester}] Finished downloading PDFs!")
+        tqdm.write(f"  {UI.GREEN}✔ [{target_semester}] Finished downloading student scorecards.{UI.RESET}")
 
         # --- MERGING PROCESS ---
-        tqdm.write(f"🔄 [{target_semester}] Starting merging process...")
+        tqdm.write(f"  {UI.CYAN}📑 [{target_semester}] Merging PDFs into single document...{UI.RESET}")
         output_pdf_path = os.path.join("Information", "Saved Results", f"{sem_input}.pdf")
         
         writer = PdfWriter()
@@ -291,23 +364,23 @@ def process_semester(sem_input, df, driver_path, position):
                 if len(reader.pages) > 0:
                     writer.add_page(reader.pages[0])
             except Exception as e:
-                tqdm.write(f"❌ [{target_semester}] Error processing {pdf_file}: {e}")
+                tqdm.write(f"  {UI.RED}✖ [{target_semester}] Error processing {pdf_file}: {e}{UI.RESET}")
         
         # Write the combined PDF
         if len(writer.pages) > 0:
             with open(output_pdf_path, "wb") as out_file:
                 writer.write(out_file)
-            tqdm.write(f"✅ [{target_semester}] Merged PDF saved to {output_pdf_path}")
+            tqdm.write(f"  {UI.GREEN}✔ [{target_semester}] Merged PDF saved: {UI.BOLD}{output_pdf_path}{UI.RESET}")
         else:
-            tqdm.write(f"⚠️ [{target_semester}] No valid PDFs found to merge. Empty PDF was not created.")
+            tqdm.write(f"  {UI.YELLOW}▲ [{target_semester}] No valid PDFs found to merge. Empty PDF was not created.{UI.RESET}")
         
         # --- CLEANUP PROCESS ---
-        tqdm.write(f"🧹 [{target_semester}] Cleaning up individual PDF files...")
+        tqdm.write(f"  {UI.GRAY}🧹 [{target_semester}] Cleaning up intermediate files...{UI.RESET}")
         try:
             shutil.rmtree(output_folder)
-            tqdm.write(f"✅ [{target_semester}] Removed intermediate folder.")
+            tqdm.write(f"  {UI.GREEN}✔ [{target_semester}] Intermediate folder cleaned.{UI.RESET}")
         except Exception as e:
-            tqdm.write(f"⚠️ [{target_semester}] Could not remove folder {output_folder}: {e}")
+            tqdm.write(f"  {UI.YELLOW}▲ [{target_semester}] Could not remove folder {output_folder}: {e}{UI.RESET}")
 
     finally:
         try:
@@ -316,9 +389,15 @@ def process_semester(sem_input, df, driver_path, position):
             pass
 
 if __name__ == "__main__":
+    UI.banner(
+        "📄 DDU RESULT FINDER  •  Result Saver",
+        "Batch downloads & merges student scorecards into PDF"
+    )
+
     info_dir = "Information"
     if not os.path.exists(info_dir) or not os.path.isdir(info_dir):
-        print(f"❌ Error: Folder '{info_dir}' does not exist! Please create it and add your input files.")
+        UI.error(f"Folder '{info_dir}' does not exist!")
+        print(f"  {UI.GRAY}Please create an 'Information' folder containing your input files.{UI.RESET}\n")
         exit(1)
 
     input_info_dir = os.path.join(info_dir, "Input Info")
@@ -331,104 +410,124 @@ if __name__ == "__main__":
         check_dirs.append(saved_dobs_dir)
 
     if not check_dirs:
-        print(f"❌ Error: Neither '{input_info_dir}' nor '{saved_dobs_dir}' exists!")
-        print("Please create at least one of these folders and place your Excel file(s) there.")
+        UI.error(f"Neither '{input_info_dir}' nor '{saved_dobs_dir}' was found!")
+        print(f"  {UI.GRAY}Please create at least one folder and place your student Excel sheet there.{UI.RESET}\n")
         exit(1)
 
-    print("🔍 Searching for eligible Excel files in 'Input Info' and 'Saved DOBs'...")
     eligible_files = find_eligible_excel_files(check_dirs)
     if not eligible_files:
-        print("❌ Error: No eligible Excel files found.")
-        print("Excel files must contain columns for Roll Number (e.g. 'Roll Number', 'roll_no') and Date of Birth (e.g. 'Date of Birth', 'dob').")
+        UI.error("No eligible Excel files found.")
+        print(f"  {UI.GRAY}Files must contain Roll Number ('Roll Number', 'roll_no') and Date of Birth ('Date of Birth', 'dob') columns.{UI.RESET}\n")
         exit(1)
 
+    # File Selection Menu
+    print(f"{UI.CYAN}{UI.BOLD}📁 Available Student Data Sheets{UI.RESET}")
+    UI.divider()
+    for idx, file_info in enumerate(eligible_files, 1):
+        tag = f"[{file_info['folder']}]"
+        print(f"  {UI.WHITE}{UI.BOLD}[{idx}]{UI.RESET} {UI.CYAN}{tag:<14}{UI.RESET} {file_info['file_name']}")
+    UI.divider()
+
     if len(eligible_files) == 1:
-        print(f"\n📄 Found 1 eligible Excel file:")
-        print(f"  1. {eligible_files[0]['display_name']}")
-        choice_input = input("Use this file? (Y/n) [default: y]: ").strip().lower()
+        choice_input = input(f"  {UI.YELLOW}Use this file? (Y/n) [default: y]{UI.RESET}: ").strip().lower()
         if choice_input in ['n', 'no']:
-            print("Operation cancelled.")
+            print(f"\n  {UI.YELLOW}▲ Operation cancelled by user.{UI.RESET}\n")
             exit(0)
         selected_file = eligible_files[0]
     else:
-        print(f"\n📁 Available eligible Excel files:")
-        for idx, file_info in enumerate(eligible_files, 1):
-            print(f"  {idx}. {file_info['display_name']}")
-
         while True:
-            choice_input = input(f"\nSelect a file to use (1-{len(eligible_files)}) [default: 1]: ").strip()
+            choice_input = input(f"  {UI.YELLOW}Select a file to use [1-{len(eligible_files)}, default: 1]{UI.RESET}: ").strip()
             if not choice_input:
                 selected_file = eligible_files[0]
                 break
             if choice_input.isdigit() and 1 <= int(choice_input) <= len(eligible_files):
                 selected_file = eligible_files[int(choice_input) - 1]
                 break
-            print(f"❌ Invalid selection. Please enter a number between 1 and {len(eligible_files)}.")
+            UI.error(f"Invalid selection. Please enter a number between 1 and {len(eligible_files)}.")
 
-    print(f"\n📖 Loading '{selected_file['display_name']}'...")
+    print()
     df = pd.read_excel(selected_file['full_path'])
-    # Standardize column names to 'Roll Number' and 'Date of Birth'
     df = df.rename(columns={
         selected_file['roll_col']: 'Roll Number',
         selected_file['dob_col']: 'Date of Birth'
     })
-
-    # Filter out empty roll rows
     df = df.dropna(subset=['Roll Number'])
-    print(f"✅ Loaded {len(df)} student records.")
+    UI.success(f"Loaded {UI.BOLD}{len(df)}{UI.RESET} student records from {UI.CYAN}{selected_file['display_name']}{UI.RESET}")
 
-    # Ask for semester input
-    target_semesters_input = input("\nEnter the semesters separated by commas (e.g. 1, 2, 3): ").strip()
-    if not target_semesters_input:
-        print("❌ No semesters provided!")
-        exit(1)
+    # Semester Input
+    while True:
+        target_semesters_input = input(f"\n  {UI.WHITE}{UI.BOLD}➤ Enter semester(s){UI.RESET} {UI.GRAY}(comma-separated, e.g. 1 or 1, 2, 3){UI.RESET}: ").strip()
+        if target_semesters_input:
+            target_semester_list = [sem.strip() for sem in target_semesters_input.split(',') if sem.strip()]
+            if target_semester_list:
+                break
+        UI.error("Please enter at least one semester number.")
 
-    target_semester_list = [sem.strip() for sem in target_semesters_input.split(',') if sem.strip()]
-    if not target_semester_list:
-        print("❌ No valid semesters provided!")
-        exit(1)
+    print()
+    # Configuration Card
+    job_items = [
+        ("Source Sheet", selected_file['full_path']),
+        ("Total Students", str(len(df))),
+        ("Target Semesters", ", ".join(f"Semester {s}" for s in target_semester_list)),
+        ("Destination", os.path.join(info_dir, "Saved Results"))
+    ]
+    UI.card("Download Configuration", job_items)
 
     # Check website status
     url = "https://result.ddugu.ac.in/result2023/searchresult_new.aspx"
-    print("\n🔍 Checking website status...")
+    print(f"  {UI.BLUE}🌐 University Portal Status :{UI.RESET} ", end="", flush=True)
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 503:
-            print("🛑 Website is DOWN: Service Unavailable (503)")
-            print("Please try again later.")
+            print(f"{UI.RED}[OFFLINE]{UI.RESET}")
+            UI.error("Portal is currently unavailable (503 Service Unavailable). Please try again later.")
             exit(1)
         elif response.status_code != 200:
-            print(f"🛑 Website returned HTTP {response.status_code}")
-            print("Please try again later.")
+            print(f"{UI.RED}[ERROR {response.status_code}]{UI.RESET}")
+            UI.error(f"Website returned HTTP status {response.status_code}.")
             exit(1)
-        print("✅ Website is UP!")
+        print(f"{UI.GREEN}[ONLINE]{UI.RESET}")
     except Exception as e:
-        print(f"🛑 Error connecting to website: {e}")
-        print("Please check your internet connection and try again.")
+        print(f"{UI.RED}[ERROR]{UI.RESET}")
+        UI.error(f"Error connecting to website: {e}")
+        print(f"  {UI.GRAY}Please check your network connection and try again.{UI.RESET}\n")
         exit(1)
 
-    # Install driver once to avoid caching conflicts when starting multiple drivers concurrently
-    print("🔄 Ensuring latest ChromeDriver is installed...")
-    driver_path = ChromeDriverManager().install()
+    # ChromeDriver Setup
+    print(f"  {UI.BLUE}🔧 Chrome WebDriver         :{UI.RESET} ", end="", flush=True)
+    try:
+        driver_path = ChromeDriverManager().install()
+        print(f"{UI.GREEN}[READY]{UI.RESET}")
+    except Exception as e:
+        print(f"{UI.RED}[FAILED]{UI.RESET}")
+        UI.error(f"Could not initialize ChromeDriver: {e}")
+        exit(1)
 
     # Ensure Saved Results directory exists
     os.makedirs(os.path.join(info_dir, "Saved Results"), exist_ok=True)
 
-    # Use ThreadPoolExecutor to run tasks simultaneously
-    print(f"🚀 Launching {len(target_semester_list)} simultaneous browser sessions...\n")
+    print(f"\n  {UI.CYAN}🚀 Launching {len(target_semester_list)} browser session(s)...{UI.RESET}\n")
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(target_semester_list)) as executor:
-        # Submit tasks to threads with index for tqdm positioning
         futures = {
             executor.submit(process_semester, sem, df, driver_path, idx): sem 
             for idx, sem in enumerate(target_semester_list)
         }
         
-        # Wait for them to finish and catch any exceptions
         for future in concurrent.futures.as_completed(futures):
             sem = futures[future]
             try:
                 future.result()
             except Exception as exc:
-                tqdm.write(f"❌ Task for Semester {sem} generated an exception: {exc}")
+                tqdm.write(f"  {UI.RED}✖ Task for Semester {sem} encountered an error: {exc}{UI.RESET}")
 
-    print("\n🚀 All processes completed successfully!")
+    # Completion Banner
+    width = 66
+    inner = width - 2
+    print(f"\n{UI.GREEN}{UI.BOLD}┌{'─' * inner}┐{UI.RESET}")
+    line1 = "  🎉 ALL SEMESTERS PROCESSED SUCCESSFULLY!"
+    line2 = f"  Output saved in: {os.path.join(info_dir, 'Saved Results')}"
+    pad1 = inner - UI.display_len(line1)
+    pad2 = inner - UI.display_len(line2)
+    print(f"{UI.GREEN}{UI.BOLD}│{UI.RESET}{UI.WHITE}{UI.BOLD}{line1}{' ' * max(0, pad1)}{UI.GREEN}{UI.BOLD}│{UI.RESET}")
+    print(f"{UI.GREEN}{UI.BOLD}│{UI.RESET}{UI.GRAY}{line2}{' ' * max(0, pad2)}{UI.GREEN}{UI.BOLD}│{UI.RESET}")
+    print(f"{UI.GREEN}{UI.BOLD}└{'─' * inner}┘{UI.RESET}\n")

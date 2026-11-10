@@ -190,7 +190,7 @@ async def try_dob(session, roll_no, semester, date_of_birth, semaphore):
 async def fetch_for_roll(session, roll_no, semester, candidate_dates, semaphore, results, results_lock, roll_pbar, filename=None, save_to_excel=True):
     roll_str = str(roll_no).zfill(6)
 
-    bar_format = f"    {UI.GRAY}{{desc:<22}}{UI.RESET} {{percentage:3.0f}}%|{{bar:25}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}{{elapsed}}<{{remaining}}{UI.RESET}]"
+    bar_format = f"    {UI.GRAY}{{desc:<22}}{UI.RESET} {{percentage:3.0f}}%|{{bar:20}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}Elapsed: {{elapsed}} | Remaining: {{remaining}}{UI.RESET}]"
 
     with tqdm(total=len(candidate_dates), desc=f"Testing {roll_str}", leave=False, position=1, dynamic_ncols=True, bar_format=bar_format) as date_pbar:
         for dob in candidate_dates:
@@ -276,7 +276,7 @@ async def run_custom_roll_search(roll_numbers, semester, month_filter, save_to_e
             results_lock = asyncio.Lock()
             semaphore = asyncio.Semaphore(50)
 
-            roll_bar_format = f"  {UI.CYAN}{UI.BOLD}{{desc:<20}}{UI.RESET} {{percentage:3.0f}}%|{{bar:25}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}{{elapsed}}<{{remaining}}{UI.RESET}]"
+            roll_bar_format = f"  {UI.CYAN}{UI.BOLD}{{desc:<20}}{UI.RESET} {{percentage:3.0f}}%|{{bar:20}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}Elapsed: {{elapsed}} | Remaining: {{remaining}}{UI.RESET}]"
             with tqdm(total=len(remaining_rolls), desc="Rolls Processed", position=0, dynamic_ncols=True, bar_format=roll_bar_format) as roll_pbar:
                 tasks = [
                     fetch_for_roll(session, rn, semester, candidate_dates, semaphore, results, results_lock, roll_pbar, filename, save_to_excel)

@@ -277,7 +277,7 @@ def process_semester(sem_input, df, driver_path, position):
         time.sleep(2)
         
         # Setup progress bar
-        bar_format = f"  {UI.CYAN}{UI.BOLD}{{desc:<16}}{UI.RESET} {{percentage:3.0f}}%|{{bar:25}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}{{elapsed}}<{{remaining}}{UI.RESET}]"
+        bar_format = f"  {UI.CYAN}{UI.BOLD}{{desc:<16}}{UI.RESET} {{percentage:3.0f}}%|{{bar:20}}| {{n_fmt}}/{{total_fmt}} [{UI.GRAY}Elapsed: {{elapsed}} | Remaining: {{remaining}}{UI.RESET}]"
         pbar = tqdm(total=len(df), desc=f"Semester {sem_input}", position=position, leave=True, bar_format=bar_format)
         
         # Loop through students
